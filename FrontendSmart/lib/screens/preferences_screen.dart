@@ -5,7 +5,7 @@ const Color screenBg = Color(0xFFE8F9F5);
 
 const Color textPrimary = Color(0xFF1A1A1A);
 const Color textGrey = Color(0xFF5A5565);
-const Color borderGrey = Color(0xFFE6E6E6);
+const Color borderGrey = Color.fromARGB(255, 248, 240, 240);
 
 const Color boxGreen = Color.fromARGB(255, 220, 245, 236);
 const Color boxBlue = Color(0xFFEAF3FF);
