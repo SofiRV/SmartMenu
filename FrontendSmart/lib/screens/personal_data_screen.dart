@@ -27,6 +27,7 @@ class _PersonalDataScreenState extends State<PersonalDataScreen> {
   String activityLevel = "Ligero (ejercicio 1-3 día)";
   double? _bmi;
   double? _calories;
+  int? _accountId;
 
   final Map<String, double> _activityFactors = {
     'Bajo (poco o nada)': 1.2,
@@ -56,6 +57,8 @@ class _PersonalDataScreenState extends State<PersonalDataScreen> {
   Future<void> _loadSavedData() async {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
+      _accountId = prefs.getInt('accountId'); // <-- AÑADIDO
+
       _ageCtrl.text = prefs.getString('age') ?? '';
       _weightCtrl.text = prefs.getString('weight') ?? '';
       _heightCtrl.text = prefs.getString('height') ?? '';
@@ -63,6 +66,8 @@ class _PersonalDataScreenState extends State<PersonalDataScreen> {
       activityLevel =
           prefs.getString('activity') ?? 'Ligero (ejercicio 1-3 día)';
     });
+
+    debugPrint("PersonalDataScreen accountId=$_accountId"); // <-- AÑADIDO
     _autoCalculate();
   }
 

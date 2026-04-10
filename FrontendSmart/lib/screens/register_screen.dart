@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../services/account_service.dart';
+
 const Color primaryGreen = Color.fromARGB(255, 11, 153, 101);
 
 class RegisterScreen extends StatefulWidget {
@@ -22,10 +24,15 @@ class _RegisterScreenState extends State<RegisterScreen> {
   bool termsAccepted = false;
   bool _submitted = false;
 
+  bool _isLoading = false;
+
   String? _usernameError;
   String? _emailError;
   String? _passwordError;
   String? _confirmPasswordError;
+
+  // Error general del formulario (backend / red / etc.)
+  String? _formError;
 
   @override
   void dispose() {
@@ -36,26 +43,31 @@ class _RegisterScreenState extends State<RegisterScreen> {
     super.dispose();
   }
 
-  //añadimos un voleano si son iguales. para validar las contraseñas y añadir el tick verde de que son iguales las dos.
+  // añadimos un booleano si son iguales. para validar las contraseñas y añadir el tick verde de que son iguales las dos.
   bool get _passwordsMatch {
     return _passwordCtrl.text.isNotEmpty &&
         _passwordCtrl.text == _confirmPasswordCtrl.text;
   }
 
-  Future<void> _saveData() async {
+  Future<void> _saveAccountSession({
+    required int accountId,
+    required String username,
+    required String email,
+  }) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('username', _usernameCtrl.text.trim());
-    await prefs.setString('email', _emailCtrl.text.trim());
-    await prefs.setString('password', _passwordCtrl.text);
+    await prefs.setInt('accountId', accountId);
+    await prefs.setString('username', username);
+    await prefs.setString('email', email);
   }
 
-  void _register() {
+  Future<void> _register() async {
     setState(() {
       _submitted = true;
       _usernameError = null;
       _emailError = null;
       _passwordError = null;
       _confirmPasswordError = null;
+      _formError = null;
     });
 
     bool hasError = false;
@@ -87,6 +99,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
     }
 
     if (!termsAccepted) {
+      // Mantenemos el snackbar para términos (esto ya existía).
+      // Si lo quieres sin snackbar también, lo cambiamos a _formError.
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text("Debes aceptar los términos y condiciones"),
@@ -95,9 +109,35 @@ class _RegisterScreenState extends State<RegisterScreen> {
       hasError = true;
     }
 
-    if (!hasError) {
-      _saveData();
+    if (hasError) return;
+
+    setState(() => _isLoading = true);
+
+    try {
+      final service = AccountService();
+
+      final accountId = await service.createAccount(
+        username: _usernameCtrl.text.trim(),
+        email: _emailCtrl.text.trim(),
+        password: _passwordCtrl.text,
+      );
+
+      await _saveAccountSession(
+        accountId: accountId,
+        username: _usernameCtrl.text.trim(),
+        email: _emailCtrl.text.trim(),
+      );
+
+      if (!mounted) return;
       Navigator.pushNamed(context, '/personal_data');
+    } catch (e) {
+      debugPrint("REGISTER ERROR: $e");
+      setState(() {
+        _formError =
+            "No se pudo crear la cuenta. Revisa los datos e inténtalo de nuevo.";
+      });
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -205,7 +245,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                             children: [
                               Checkbox(
                                 value: termsAccepted,
-                                activeColor: Color.fromARGB(255, 11, 153, 101),
+                                activeColor:
+                                    const Color.fromARGB(255, 11, 153, 101),
                                 onChanged: (v) =>
                                     setState(() => termsAccepted = v!),
                               ),
@@ -249,6 +290,22 @@ class _RegisterScreenState extends State<RegisterScreen> {
                               ),
                             ],
                           ),
+
+                          // Error general (backend)
+                          if (_submitted && _formError != null) ...[
+                            const SizedBox(height: 10),
+                            Align(
+                              alignment: Alignment.centerLeft,
+                              child: Text(
+                                _formError!,
+                                style: const TextStyle(
+                                  color: Colors.red,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ],
                         ],
                       ),
                     ),
@@ -263,16 +320,17 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   width: 280, // <<< MISMO ANCHO QUE LA CAJA
                   child: ElevatedButton(
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Color.fromARGB(255, 11, 153, 101),
+                      backgroundColor:
+                          const Color.fromARGB(255, 11, 153, 101),
                       minimumSize: const Size(double.infinity, 50),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(10),
                       ),
                     ),
-                    onPressed: _register,
-                    child: const Text(
-                      "Aceptar",
-                      style: TextStyle(fontSize: 16, color: Colors.white),
+                    onPressed: _isLoading ? null : _register,
+                    child: Text(
+                      _isLoading ? "Creando..." : "Aceptar",
+                      style: const TextStyle(fontSize: 16, color: Colors.white),
                     ),
                   ),
                 ),
@@ -280,8 +338,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
               const SizedBox(height: 20),
               GestureDetector(
-                onTap: () =>
-                    Navigator.pushNamed(context, '/login'), // ← Aquí se cambia
+                onTap: () => Navigator.pushNamed(context, '/login'),
                 child: RichText(
                   text: const TextSpan(
                     style: TextStyle(fontSize: 14),
@@ -327,8 +384,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
           controller: ctrl,
           obscureText: isPassword
               ? !(label.contains("Confirmar")
-                    ? _confirmPasswordVisible
-                    : _passwordVisible)
+                  ? _confirmPasswordVisible
+                  : _passwordVisible)
               : false,
           onChanged: (_) {
             if (isPassword) {
@@ -338,40 +395,37 @@ class _RegisterScreenState extends State<RegisterScreen> {
           decoration: InputDecoration(
             labelText: label,
             prefixIcon: Icon(icon, color: Colors.grey),
-
             suffixIcon: isPassword
                 ? (_passwordsMatch
-                      ? const Icon(
-                          Icons.check,
-                          color: Color.fromARGB(255, 44, 176, 128),
-                        )
-                      : IconButton(
-                          icon: Icon(
-                            (label.contains("Confirmar")
-                                    ? _confirmPasswordVisible
-                                    : _passwordVisible)
-                                ? Icons.visibility
-                                : Icons.visibility_off,
-                            color: Colors.grey,
-                          ),
-                          onPressed: () {
-                            setState(() {
-                              if (label.contains("Confirmar")) {
-                                _confirmPasswordVisible =
-                                    !_confirmPasswordVisible;
-                              } else {
-                                _passwordVisible = !_passwordVisible;
-                              }
-                            });
-                          },
-                        ))
+                    ? const Icon(
+                        Icons.check,
+                        color: Color.fromARGB(255, 44, 176, 128),
+                      )
+                    : IconButton(
+                        icon: Icon(
+                          (label.contains("Confirmar")
+                                  ? _confirmPasswordVisible
+                                  : _passwordVisible)
+                              ? Icons.visibility
+                              : Icons.visibility_off,
+                          color: Colors.grey,
+                        ),
+                        onPressed: () {
+                          setState(() {
+                            if (label.contains("Confirmar")) {
+                              _confirmPasswordVisible =
+                                  !_confirmPasswordVisible;
+                            } else {
+                              _passwordVisible = !_passwordVisible;
+                            }
+                          });
+                        },
+                      ))
                 : null,
-
             floatingLabelStyle: const TextStyle(
               color: Color.fromARGB(255, 11, 153, 101),
               fontWeight: FontWeight.w500,
             ),
-
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
               borderSide: const BorderSide(
@@ -379,14 +433,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 width: 2,
               ),
             ),
-
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
               borderSide: const BorderSide(color: Colors.grey),
             ),
-
             filled: true,
-
             fillColor: Colors.white,
             border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
           ),
