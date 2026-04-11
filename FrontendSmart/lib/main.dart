@@ -8,9 +8,9 @@ import 'screens/personal_data_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/new_password_screen.dart';
 import 'screens/recover_password_screen.dart';
-import 'screens/account_type_screen.dart';
+// import 'screens/account_type_screen.dart'; // ❌ QUITAR
 import 'screens/preferences_screen.dart';
-import 'screens/individual_home_screen.dart'; // <<--- IMPORTADO
+import 'screens/individual_home_screen.dart';
 
 void main() {
   runApp(SmartMenuApp());
@@ -34,10 +34,9 @@ class SmartMenuApp extends StatelessWidget {
         '/login': (context) => LoginScreen(),
         '/new_password': (context) => NewPasswordScreen(token: 'test_token'),
         '/recover_password': (context) => RecoverPasswordScreen(),
-        '/account_type': (context) => AccountTypeScreen(),
+        // '/account_type': (context) => AccountTypeScreen(), // ❌ QUITAR
         '/preferences': (context) => PreferencesScreen(),
-        '/individual_home': (context) =>
-            IndividualHomeScreen(), // <<--- NUEVA RUTA
+        '/individual_home': (context) => IndividualHomeScreen(),
       },
     );
   }

@@ -9,7 +9,7 @@ class AccountService {
     required String email,
     required String password,
   }) async {
-    final uri = Uri.parse(ApiConfig.url("/account/"));
+    final uri = Uri.parse(ApiConfig.url("/userApi/v1/account/"));
 
     final res = await http.post(
       uri,
