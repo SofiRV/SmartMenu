@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../services/camera_service.dart';
+
 const Color primaryGreen = Color.fromARGB(255, 11, 153, 101);
 const Color screenBg = Color(0xFFE8F9F5);
 
@@ -268,8 +270,17 @@ class _SearchRecipeScreenState extends State<SearchRecipeScreen> {
           const SizedBox(height: 12),
 
           GestureDetector(
-            onTap: () {
-              // abrir cámara / picker
+            onTap: () async {
+              final file = await CameraService.takePhoto(imageQuality: 85);
+              if (!mounted) return;
+
+              if (file == null) return; // canceló
+
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text("Foto tomada: ${file.name}")),
+              );
+
+              // TODO: aquí mandas file.path a tu IA/backend
             },
             child: Container(
               height: 110,
@@ -490,7 +501,6 @@ class _SearchRecipeScreenState extends State<SearchRecipeScreen> {
             ),
           ),
           const SizedBox(width: 12),
-
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -567,7 +577,6 @@ class _SearchRecipeScreenState extends State<SearchRecipeScreen> {
                     ),
                   ],
                 ),
-
                 if (missing != null) ...[
                   const SizedBox(height: 12),
                   Container(
