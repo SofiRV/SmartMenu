@@ -14,6 +14,7 @@ import 'screens/recover_password_screen.dart';
 import 'screens/preferences_screen.dart';
 import 'screens/individual_home_screen.dart';
 import 'screens/saved_recipes_screen.dart';
+import 'screens/post_login_router_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -56,10 +57,11 @@ class SmartMenuApp extends StatelessWidget {
             '/login': (context) => const LoginScreen(),
             '/new_password': (context) =>
                 const NewPasswordScreen(token: 'test_token'),
-            '/recover_password': (context) => const RecoverPasswordScreen(),
+            '/recover_password': (context) => RecoverPasswordScreen(),
             '/preferences': (context) => const PreferencesScreen(),
             '/individual_home': (context) => const IndividualHomeScreen(),
             '/saved_recipes': (context) => const SavedRecipesScreen(),
+            '/post_login': (context) => const PostLoginRouterScreen(),
           },
         );
       },

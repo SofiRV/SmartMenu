@@ -493,27 +493,28 @@ class _PersonalDataScreenState extends State<PersonalDataScreen> {
           const SizedBox(height: 10),
 
           DropdownButtonFormField<String>(
+            isExpanded: true,
             initialValue: activityUiValue,
             style: const TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.w400,
               color: Color(0xFF1A1A1A),
             ),
-            items: _activityUiToApi.keys
-                .map(
-                  (k) => DropdownMenuItem<String>(
-                    value: k,
-                    child: Text(
-                      k,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w400,
-                        color: Color.fromARGB(255, 66, 66, 66),
-                      ),
-                    ),
+            items: _activityUiToApi.keys.map((k) {
+              return DropdownMenuItem<String>(
+                value: k,
+                child: Text(
+                  k,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w400,
+                    color: Color.fromARGB(255, 66, 66, 66),
                   ),
-                )
-                .toList(),
+                ),
+              );
+            }).toList(),
             decoration: _dropdownStyle(),
             onChanged: (uiValue) {
               if (uiValue == null) return;

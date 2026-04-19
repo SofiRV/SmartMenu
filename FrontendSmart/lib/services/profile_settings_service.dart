@@ -28,6 +28,31 @@ class ProfileSettingsService {
     throw Exception("Unexpected settings response: ${res.body}");
   }
 
+  /// ✅ Backend: GET /userApi/v1/account/{accountId}/profile/{profileId}/settings
+  Future<Map<String, dynamic>> getProfileSettings({
+    required int accountId,
+    required int profileId,
+  }) async {
+    final uri = Uri.parse(
+      ApiConfig.url("/account/$accountId/profile/$profileId/settings"),
+    );
+
+    final res = await http.get(uri);
+
+    // Si el backend usa 404 cuando no hay settings aún, lo tratamos como "vacío"
+    if (res.statusCode == 404) {
+      return {};
+    }
+
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      throw Exception("GET settings failed: HTTP ${res.statusCode}: ${res.body}");
+    }
+
+    final decoded = jsonDecode(res.body);
+    if (decoded is Map<String, dynamic>) return decoded;
+    throw Exception("Unexpected GET settings response: ${res.body}");
+  }
+
   Future<Map<String, dynamic>> setProfileIllnessIds({
     required int accountId,
     required int profileId,

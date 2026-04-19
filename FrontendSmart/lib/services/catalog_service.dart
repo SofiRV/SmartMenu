@@ -35,79 +35,6 @@ class IllnessItem {
   }
 }
 
-class CatalogService {
-  // Según tu compi:
-  // GET /userApi/v1/accounts/diet-types
-  Future<List<CatalogItem>> getDietTypes() async {
-    final uri = Uri.parse(ApiConfig.url("/accounts/diet-types"));
-    final res = await http.get(uri);
-    if (res.statusCode < 200 || res.statusCode >= 300) {
-      throw Exception("GET diet-types failed: HTTP ${res.statusCode}: ${res.body}");
-    }
-
-    final decoded = jsonDecode(res.body);
-    if (decoded is List) {
-      return decoded.map((e) => CatalogItem.fromJson(e)).toList();
-    }
-    throw Exception("Unexpected diet-types response: ${res.body}");
-  }
-
-  // GET /userApi/v1/accounts/goals
-  Future<List<CatalogItem>> getGoals() async {
-    final uri = Uri.parse(ApiConfig.url("/accounts/goals"));
-    final res = await http.get(uri);
-    if (res.statusCode < 200 || res.statusCode >= 300) {
-      throw Exception("GET goals failed: HTTP ${res.statusCode}: ${res.body}");
-    }
-
-    final decoded = jsonDecode(res.body);
-    if (decoded is List) {
-      return decoded.map((e) => CatalogItem.fromJson(e)).toList();
-    }
-    throw Exception("Unexpected goals response: ${res.body}");
-  }
-
-  // GET /userApi/v1/accounts/illnesses?query=...
-  Future<List<IllnessItem>> searchIllnesses({required String query}) async {
-    final q = query.trim();
-    final uri = Uri.parse(ApiConfig.url("/accounts/illnesses"))
-        .replace(queryParameters: {'query': q});
-
-    final res = await http.get(uri);
-    if (res.statusCode < 200 || res.statusCode >= 300) {
-      throw Exception("GET illnesses failed: HTTP ${res.statusCode}: ${res.body}");
-    }
-
-    final decoded = jsonDecode(res.body);
-    if (decoded is List) {
-      return decoded.map((e) => IllnessItem.fromJson(e)).toList();
-    }
-    throw Exception("Unexpected illnesses response: ${res.body}");
-  }
-
-  // POST /userApi/v1/accounts/illnesses  (create-or-get)
-  Future<IllnessItem> createOrGetIllness({required String name}) async {
-    final n = name.trim();
-    final uri = Uri.parse(ApiConfig.url("/accounts/illnesses"));
-
-    final res = await http.post(
-      uri,
-      headers: {"Content-Type": "application/json"},
-      body: jsonEncode({"name": n}),
-    );
-
-    if (res.statusCode < 200 || res.statusCode >= 300) {
-      throw Exception("POST illness failed: HTTP ${res.statusCode}: ${res.body}");
-    }
-
-    final decoded = jsonDecode(res.body);
-    if (decoded is Map<String, dynamic>) {
-      return IllnessItem.fromJson(decoded);
-    }
-    throw Exception("Unexpected create-illness response: ${res.body}");
-  }
-}
-
 class FoodFamilyItem {
   final int id;
   final String name;
@@ -134,49 +61,90 @@ class GenericIngredientItem {
   factory GenericIngredientItem.fromJson(Map<String, dynamic> json) {
     final rawId = json['id'];
     final id = rawId is int ? rawId : (rawId as num).toInt();
-    final ff = json['foodFamilyId'] ?? json['food_family_id'];
+
+    int? ffId;
+
+    // /generic-ingredient/ devuelve "food_family": {...}
+    final ffObj = json['food_family'];
+    if (ffObj is Map && ffObj['id'] != null) {
+      final x = ffObj['id'];
+      ffId = x is int ? x : (x as num).toInt();
+    } else {
+      final x = json['foodFamilyId'] ?? json['food_family_id'];
+      if (x != null) ffId = x is int ? x : (x as num).toInt();
+    }
+
     return GenericIngredientItem(
       id: id,
       name: (json['name'] ?? json['self_name'] ?? '').toString(),
-      foodFamilyId: ff == null ? null : (ff is int ? ff : (ff as num).toInt()),
+      foodFamilyId: ffId,
     );
   }
 }
 
-extension BansCatalog on CatalogService {
-  // GET /userApi/v1/food-family?query=...
-  Future<List<FoodFamilyItem>> searchFoodFamilies({required String query}) async {
-    final q = query.trim();
-    final uri = Uri.parse(ApiConfig.url("/food-family"))
-        .replace(queryParameters: q.isEmpty ? null : {'query': q});
-
+class CatalogService {
+  Future<List<CatalogItem>> getDietTypes() async {
+    final uri = Uri.parse(ApiConfig.url("/account/diet-types"));
     final res = await http.get(uri);
+
     if (res.statusCode < 200 || res.statusCode >= 300) {
-      throw Exception("GET food-family failed: HTTP ${res.statusCode}: ${res.body}");
+      throw Exception("GET diet-types failed: HTTP ${res.statusCode}: ${res.body}");
     }
 
     final decoded = jsonDecode(res.body);
-    if (decoded is List) {
-      return decoded.map((e) => FoodFamilyItem.fromJson(e)).toList();
-    }
-    throw Exception("Unexpected food-family response: ${res.body}");
+    if (decoded is List) return decoded.map((e) => CatalogItem.fromJson(e)).toList();
+    throw Exception("Unexpected diet-types response: ${res.body}");
   }
 
-  // GET /userApi/v1/generic-ingredient?query=...
-  Future<List<GenericIngredientItem>> searchGenericIngredients({required String query}) async {
-    final q = query.trim();
-    final uri = Uri.parse(ApiConfig.url("/generic-ingredient"))
-        .replace(queryParameters: q.isEmpty ? null : {'query': q});
-
+  Future<List<CatalogItem>> getGoals() async {
+    final uri = Uri.parse(ApiConfig.url("/account/goals"));
     final res = await http.get(uri);
+
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      throw Exception("GET goals failed: HTTP ${res.statusCode}: ${res.body}");
+    }
+
+    final decoded = jsonDecode(res.body);
+    if (decoded is List) return decoded.map((e) => CatalogItem.fromJson(e)).toList();
+    throw Exception("Unexpected goals response: ${res.body}");
+  }
+
+  Future<List<IllnessItem>> getAllIllnesses() async {
+    final uri = Uri.parse(ApiConfig.url("/account/illnesses"));
+    final res = await http.get(uri);
+
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      throw Exception("GET illnesses failed: HTTP ${res.statusCode}: ${res.body}");
+    }
+
+    final decoded = jsonDecode(res.body);
+    if (decoded is List) return decoded.map((e) => IllnessItem.fromJson(e)).toList();
+    throw Exception("Unexpected illnesses response: ${res.body}");
+  }
+
+  Future<List<FoodFamilyItem>> getAllFoodFamilies() async {
+    final uri = Uri.parse(ApiConfig.url("/food-family/food-families"));
+    final res = await http.get(uri);
+
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      throw Exception("GET food-families failed: HTTP ${res.statusCode}: ${res.body}");
+    }
+
+    final decoded = jsonDecode(res.body);
+    if (decoded is List) return decoded.map((e) => FoodFamilyItem.fromJson(e)).toList();
+    throw Exception("Unexpected food-families response: ${res.body}");
+  }
+
+  Future<List<GenericIngredientItem>> getAllGenericIngredients() async {
+    final uri = Uri.parse(ApiConfig.url("/generic-ingredient/"));
+    final res = await http.get(uri);
+
     if (res.statusCode < 200 || res.statusCode >= 300) {
       throw Exception("GET generic-ingredient failed: HTTP ${res.statusCode}: ${res.body}");
     }
 
     final decoded = jsonDecode(res.body);
-    if (decoded is List) {
-      return decoded.map((e) => GenericIngredientItem.fromJson(e)).toList();
-    }
+    if (decoded is List) return decoded.map((e) => GenericIngredientItem.fromJson(e)).toList();
     throw Exception("Unexpected generic-ingredient response: ${res.body}");
   }
 }
