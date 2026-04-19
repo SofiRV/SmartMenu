@@ -375,6 +375,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     IconData icon, {
     bool isPassword = false,
   }) {
+    // ignore: unused_local_variable
     bool isConfirmPassword = label.contains("Confirmar");
 
     return Column(

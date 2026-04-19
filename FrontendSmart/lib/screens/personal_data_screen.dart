@@ -40,6 +40,7 @@ class _PersonalDataScreenState extends State<PersonalDataScreen> {
   double? _bmi;
   double? _calories;
 
+  // ignore: unused_field
   int? _accountId;
 
   // Validación UI
@@ -752,6 +753,7 @@ class _PersonalDataScreenState extends State<PersonalDataScreen> {
             width: double.infinity,
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
+              // ignore: deprecated_member_use
               color: Colors.white.withOpacity(0.9),
               borderRadius: BorderRadius.circular(14),
             ),

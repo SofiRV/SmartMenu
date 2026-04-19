@@ -76,8 +76,8 @@ class _LoginScreenState extends State<LoginScreen> {
       final service = AccountService();
 
       final result = await service.login(
-        email: _emailCtrl.text,
-        password: _passwordCtrl.text,
+        email: _emailCtrl.text.trim(),
+        password: _passwordCtrl.text.trim(),
       );
 
       if (!result.ok || result.accountId == null) {

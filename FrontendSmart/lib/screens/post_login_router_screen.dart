@@ -76,7 +76,7 @@ class _PostLoginRouterScreenState extends State<PostLoginRouterScreen> {
       }
 
       if (!mounted) return;
-      Navigator.pushReplacementNamed(context, '/individual_home');
+      Navigator.pushReplacementNamed(context, '/home');
     } catch (e) {
       setState(() => _error = e.toString());
     }
