@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
 
+import '../shared_preferences/shared_preferences.dart';
+
+
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
 
@@ -18,7 +21,6 @@ class _SplashScreenState extends State<SplashScreen>
   void initState() {
     super.initState();
 
-    // ✅ Animación logo (fade + scale)
     _controller = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 850),
@@ -33,10 +35,16 @@ class _SplashScreenState extends State<SplashScreen>
 
     _controller.forward();
 
-    // ⏳ Espera 3 segundos y navega
-    Timer(const Duration(seconds: 3), () {
+    Future.delayed(const Duration(seconds: 3), () async {
+      final accountId = await UserDataStorage.getAccountId();
+
       if (!mounted) return;
-      Navigator.pushReplacementNamed(context, '/welcome');
+
+      if (accountId != null) {
+        Navigator.pushReplacementNamed(context, '/post_login');
+      } else {
+        Navigator.pushReplacementNamed(context, '/welcome');
+      }
     });
   }
 

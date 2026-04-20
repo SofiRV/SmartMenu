@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app_theme.dart';
@@ -14,8 +15,10 @@ import 'screens/recover_password_screen.dart';
 import 'screens/preferences_screen.dart';
 import 'screens/saved_recipes_screen.dart';
 import 'screens/post_login_router_screen.dart';
+import 'screens/individual_home_screen.dart';
 
-import 'screens/home/individual_home_screen.dart';
+// Importa tu HomeController (ajusta si te cambió la ubicación)
+import 'screens/home/controllers/home_controller.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -26,7 +29,15 @@ void main() async {
   themeModeNotifier.value =
       isDark ? ThemeMode.dark : ThemeMode.light;
 
-  runApp(const SmartMenuApp());
+  runApp(
+    MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => HomeController()),
+        // ... Puedes agregar más providers aquí si los necesitas.
+      ],
+      child: const SmartMenuApp(),
+    ),
+  );
 }
 
 class SmartMenuApp extends StatelessWidget {
@@ -56,7 +67,6 @@ class SmartMenuApp extends StatelessWidget {
 
           themeMode: mode,
 
-          // 🚀 mejor para apps con login
           initialRoute: '/',
 
           routes: {
@@ -65,19 +75,13 @@ class SmartMenuApp extends StatelessWidget {
             '/register': (context) => const RegisterScreen(),
             '/personal_data': (context) => const PersonalDataScreen(),
             '/login': (context) => const LoginScreen(),
-
             '/new_password': (context) =>
                 const NewPasswordScreen(token: 'test_token'),
-
             '/recover_password': (context) =>
                 RecoverPasswordScreen(),
-
             '/preferences': (context) => const PreferencesScreen(),
-
             '/home': (context) => const IndividualHomeScreen(),
-
             '/saved_recipes': (context) => const SavedRecipesScreen(),
-
             '/post_login': (context) => const PostLoginRouterScreen(),
           },
         );

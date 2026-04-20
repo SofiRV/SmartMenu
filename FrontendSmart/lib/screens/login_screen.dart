@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../services/account_service.dart';
+import '../shared_preferences/shared_preferences.dart';
 
 const Color primaryGreen = Color.fromARGB(255, 11, 153, 101);
 
@@ -36,8 +37,10 @@ class _LoginScreenState extends State<LoginScreen> {
     required String username,
     required String email,
   }) async {
+    await UserDataStorage.setAccountId(accountId);
+    // Si quieres guardar username/email, usa aquí SharedPreferences directo, pero solo si de verdad los usas después
+    // Ejemplo:
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt('accountId', accountId);
     await prefs.setString('username', username);
     await prefs.setString('email', email);
   }

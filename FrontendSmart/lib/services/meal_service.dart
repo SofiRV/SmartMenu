@@ -1,47 +1,46 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import 'api_config.dart';
+import '../screens/home/models/meal_item.dart';
 
-class MealService {
-  Future<List<dynamic>> getMealsByAccount(int accountId) async {
-    final response = await http.get(
-      Uri.parse(ApiConfig.url("/meal/account/$accountId")),
-      headers: {
-        "Content-Type": "application/json",
-      },
-    );
+class MealsService {
+  // Cambia la URL por la del backend real
+  static const String baseUrl = 'https://tu-backend.com/api/meals';
 
+  Future<List<MealItem>> fetchNextMeals() async {
+    final response = await http.get(Uri.parse('$baseUrl/next'));
     if (response.statusCode == 200) {
-      final data = jsonDecode(response.body);
-      return data["meals"] ?? [];
+      final List data = jsonDecode(response.body);
+      return data.map((e) => MealItem(
+        id: e['id'],
+        icon: e['icon'],
+        title: e['title'],
+        tag: e['tag'],
+        time: e['time'],
+        kcal: e['kcal'].toString(),
+        done: e['done'] ?? false,
+      )).toList();
     } else {
-      throw Exception("No se pudieron cargar las comidas");
+      throw Exception('No se pudieron cargar las comidas');
     }
   }
 
-  Future<Map<String, dynamic>> getMealById(int mealId) async {
-    final response = await http.get(
-      Uri.parse(ApiConfig.url("/meal/$mealId")),
-      headers: {
-        "Content-Type": "application/json",
-      },
-    );
-
+  Future<List<MealItem>> fetchEatenToday() async {
+    final response = await http.get(Uri.parse('$baseUrl/eaten_today'));
     if (response.statusCode == 200) {
-      return jsonDecode(response.body);
+      final List data = jsonDecode(response.body);
+      return data.map((e) => MealItem(
+        id: e['id'],
+        icon: e['icon'],
+        title: e['title'],
+        tag: e['tag'],
+        time: e['time'],
+        kcal: e['kcal'].toString(),
+        done: e['done'] ?? true,
+      )).toList();
     } else {
-      throw Exception("No se pudo cargar la comida");
+      throw Exception('No se pudieron cargar las comidas ya comidas');
     }
   }
 
-  Future<bool> deleteMeal(int mealId) async {
-    final response = await http.delete(
-      Uri.parse(ApiConfig.url("/meal/$mealId")),
-      headers: {
-        "Content-Type": "application/json",
-      },
-    );
-
-    return response.statusCode == 200;
-  }
+  // Puedes agregar más: fetchYesterday(), fetchTomorrow(), etc.
 }
