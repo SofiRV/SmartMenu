@@ -1,46 +1,30 @@
-import 'dart:convert';
+// lib/services/meal_service.dart
+
 import 'package:http/http.dart' as http;
+import 'dart:convert';
 import '../screens/home/models/meal_item.dart';
+import 'api_config.dart';
 
-class MealsService {
-  // Cambia la URL por la del backend real
-  static const String baseUrl = 'https://tu-backend.com/api/meals';
+class MealService {
+  final String baseUrl; // ejemplo: "http://192.168.1.10:8000" o de tu .env
 
-  Future<List<MealItem>> fetchNextMeals() async {
-    final response = await http.get(Uri.parse('$baseUrl/next'));
+  MealService(this.baseUrl);
+
+  Future<List<MealItem>> fetchMeals(int accountId) async {
+    final url = Uri.parse(ApiConfig.url('meal/account/$accountId'));
+    final response = await http.get(url);
+
     if (response.statusCode == 200) {
-      final List data = jsonDecode(response.body);
-      return data.map((e) => MealItem(
-        id: e['id'],
-        icon: e['icon'],
-        title: e['title'],
-        tag: e['tag'],
-        time: e['time'],
-        kcal: e['kcal'].toString(),
-        done: e['done'] ?? false,
-      )).toList();
+      final decoded = json.decode(response.body);
+
+      // Aquí depende de la estructura real,
+      // normalmente las comidas vienen en decoded["meals"]
+      final mealsList = decoded["meals"] as List;
+      return mealsList
+          .map((mealJson) => MealItem.fromBackend(mealJson))
+          .toList();
     } else {
-      throw Exception('No se pudieron cargar las comidas');
+      throw Exception('Error cargando las comidas (${response.statusCode})');
     }
   }
-
-  Future<List<MealItem>> fetchEatenToday() async {
-    final response = await http.get(Uri.parse('$baseUrl/eaten_today'));
-    if (response.statusCode == 200) {
-      final List data = jsonDecode(response.body);
-      return data.map((e) => MealItem(
-        id: e['id'],
-        icon: e['icon'],
-        title: e['title'],
-        tag: e['tag'],
-        time: e['time'],
-        kcal: e['kcal'].toString(),
-        done: e['done'] ?? true,
-      )).toList();
-    } else {
-      throw Exception('No se pudieron cargar las comidas ya comidas');
-    }
-  }
-
-  // Puedes agregar más: fetchYesterday(), fetchTomorrow(), etc.
 }

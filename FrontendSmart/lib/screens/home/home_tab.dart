@@ -13,9 +13,12 @@ import '../home/eaten_today_list.dart';
 import '../home/inspiration_card.dart';
 import '../home/search_recipes_card.dart';
 import '../home/shopping_list_card.dart';
+import '../../services/meal_service.dart';
 
 class HomeTab extends StatelessWidget {
-  const HomeTab({super.key});
+  final int accountId; 
+  final String baseUrl;
+  const HomeTab({super.key, required this.accountId, required this.baseUrl});
 
   @override
   Widget build(BuildContext context) {
