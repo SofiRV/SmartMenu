@@ -1,5 +1,3 @@
-// lib/models/meal_item.dart
-
 class MealItem {
   final String id;
   final String icon;
@@ -39,22 +37,21 @@ class MealItem {
     );
   }
 
-  /// Construir desde la respuesta del backend
+  // Construir desde el backend
   factory MealItem.fromBackend(Map<String, dynamic> json) {
     final foods = (json['foods'] as List?) ?? [];
     final mainFood = foods.isNotEmpty ? foods.first : null;
 
-    final String icon = "assets/icons/default_food.png"; // Cambia el path y elige según momento o tipo si tienes
+    final String icon = "assets/icons/default_food.png"; // adapta según momento/tipo si lo deseas
     final String tag = mainFood != null && mainFood['name'] != null
         ? mainFood['name'] as String
         : "";
 
-    // Obtén la hora solamente (asume formato ISO 8601)
+    // Obtén solo la hora
     final String datetime = json['datetime'] ?? "";
     final String time =
         datetime.length > 10 ? datetime.substring(11, 16) : "--:--";
 
-    // Si tu food tiene calorías en el backend, ponlo aquí, si no, "--"
     final String kcal =
         mainFood != null && mainFood['kcal'] != null ? mainFood['kcal'].toString() : "--";
 

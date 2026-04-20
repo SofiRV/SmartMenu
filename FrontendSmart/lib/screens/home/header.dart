@@ -12,10 +12,9 @@ class Header extends StatelessWidget {
 
   String _momentLabel() {
     final h = DateTime.now().hour;
-    if (h < 11) return "Tu mañana";
-    if (h < 16) return "Tu mediodía";
-    if (h < 20) return "Tu tarde";
-    return "Tu noche";
+    if (h < 11) return "Buenos días";
+    if (h < 16) return "Buenas tardes";
+    return "Buenas noches";
   }
 
   @override

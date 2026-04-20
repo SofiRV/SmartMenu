@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../home/models/meal_item.dart'; // Para usar MiniMeal
+import '../home/models/mini_meal.dart'; // Para usar MiniMeal
 
 class QuickSummaryCarousel extends StatelessWidget {
   final String title;

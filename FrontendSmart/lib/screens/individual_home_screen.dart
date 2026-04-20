@@ -8,7 +8,9 @@ import 'shop_screen.dart';
 import 'settings_screen.dart';
 
 class IndividualHomeScreen extends StatefulWidget {
-  const IndividualHomeScreen({super.key});
+  final int accountId;
+
+  const IndividualHomeScreen({super.key, required this.accountId});
 
   @override
   State<IndividualHomeScreen> createState() => _IndividualHomeScreenState();
@@ -21,7 +23,7 @@ class _IndividualHomeScreenState extends State<IndividualHomeScreen> {
 
   // Lista de las páginas/tabs principales
   List<Widget> get _pages => [
-        const HomeTab(),
+        HomeTab(accountId: widget.accountId), // Pasamos accountId al HomeTab
         const PlanScreen(),
         const SearchRecipeScreen(),
         const ShopScreen(),

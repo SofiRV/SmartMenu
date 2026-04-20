@@ -1,89 +1,40 @@
 import 'package:flutter/material.dart';
 import '../models/meal_item.dart';
+import '../models/mini_meal.dart';
 
 class HomeController extends ChangeNotifier {
-  // Demo data: próximas comidas y comidas ya consumidas.
-  List<MealItem> _nextMeals = [
-    MealItem(
-      id: 'm1',
-      icon: "🥗",
-      title: "Ensalada César",
-      tag: "Comida",
-      time: "14:00",
-      kcal: "320",
-    ),
-    MealItem(
-      id: 'm2',
-      icon: "☕",
-      title: "Café con leche",
-      tag: "Snack",
-      time: "16:30",
-      kcal: "120",
-    ),
-    MealItem(
-      id: 'm3',
-      icon: "🍝",
-      title: "Pasta al pesto",
-      tag: "Cena",
-      time: "20:30",
-      kcal: "600",
-    ),
-  ];
+  // Comidas de hoy
+  List<MealItem> _nextMeals = [];
+  List<MealItem> _eatenToday = [];
 
-  List<MealItem> _eatenToday = [
-    MealItem(
-      id: 'e1',
-      icon: "🥑",
-      title: "Tostadas con aguacate",
-      tag: "Desayuno",
-      time: "08:30",
-      kcal: "420",
-      done: true,
-    ),
-  ];
+  // Carruseles para "ayer" y "mañana"
+  List<MiniMeal> _yesterday = [];
+  List<MiniMeal> _tomorrow = [];
 
-  // Carrusel: ayer y mañana
-  List<MiniMeal> yesterday = const [
-    MiniMeal(
-      icon: "🥑",
-      title: "Tostadas",
-      subtitle: "Ayer 08:30",
-      kcal: "420",
-    ),
-    MiniMeal(
-      icon: "🥤",
-      title: "Smoothie",
-      subtitle: "Ayer 11:00",
-      kcal: "180",
-    ),
-  ];
-
-  List<MiniMeal> tomorrow = const [
-    MiniMeal(
-      icon: "🍳",
-      title: "Huevos",
-      subtitle: "Mañana 09:00",
-      kcal: "350",
-    ),
-    MiniMeal(
-      icon: "🥗",
-      title: "Ensalada",
-      subtitle: "Mañana 14:00",
-      kcal: "320",
-    ),
-    MiniMeal(
-      icon: "🍝",
-      title: "Pasta",
-      subtitle: "Mañana 20:30",
-      kcal: "600",
-    ),
-  ];
-
-  // Getters para exponer la data
+  // Getters
   List<MealItem> get nextMeals => _nextMeals;
   List<MealItem> get eatenToday => _eatenToday;
+  List<MiniMeal> get yesterday => _yesterday;
+  List<MiniMeal> get tomorrow => _tomorrow;
 
-  // Métodos para modificar estado
+  // Setters de datos desde backend:
+  void setTodayMeals({required List<MealItem> next, required List<MealItem> eaten}) {
+    _nextMeals = next;
+    _eatenToday = eaten;
+    notifyListeners();
+  }
+
+  void setYesterday(List<MiniMeal> list) {
+    _yesterday = list;
+    notifyListeners();
+  }
+
+  void setTomorrow(List<MiniMeal> list) {
+    _tomorrow = list;
+    notifyListeners();
+  }
+
+  // Métodos UX
   void reorderMeal(int oldIndex, int newIndex) {
     if (newIndex > oldIndex) newIndex -= 1;
     final item = _nextMeals.removeAt(oldIndex);
@@ -104,6 +55,4 @@ class HomeController extends ChangeNotifier {
     }
     notifyListeners();
   }
-
-  // Puedes añadir métodos para agregar comidas, editar, registrar extra, etc.
 }

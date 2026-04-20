@@ -80,7 +80,16 @@ class SmartMenuApp extends StatelessWidget {
             '/recover_password': (context) =>
                 RecoverPasswordScreen(),
             '/preferences': (context) => const PreferencesScreen(),
-            '/home': (context) => const IndividualHomeScreen(),
+            '/home': (context) => FutureBuilder<int?>(
+            future: SharedPreferences.getInstance().then((prefs) => prefs.getInt('accountId')),
+              builder: (context, snapshot) {
+                if (!snapshot.hasData) {
+                  return const CircularProgressIndicator(); // o una pantalla de loading
+                }
+                final accountId = snapshot.data ?? 1; // fallback a 1 si no existe
+                return IndividualHomeScreen(accountId: accountId);
+              },
+            ),
             '/saved_recipes': (context) => const SavedRecipesScreen(),
             '/post_login': (context) => const PostLoginRouterScreen(),
           },

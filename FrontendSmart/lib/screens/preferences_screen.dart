@@ -363,7 +363,7 @@ class _PreferencesScreenState extends State<PreferencesScreen> {
       await _saveSelectionsToPrefs();
 
       if (!mounted) return;
-      Navigator.pushReplacementNamed(context, '/individual_home');
+      Navigator.pushReplacementNamed(context, '/home');
     } catch (e) {
       setState(() => _error = e.toString());
     } finally {
