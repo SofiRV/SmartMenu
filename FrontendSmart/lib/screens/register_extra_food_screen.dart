@@ -44,8 +44,14 @@ class _RegisterExtraFoodScreenState extends State<RegisterExtraFoodScreen> {
   List<GenericIngredientItem> _filteredItems = [];
   List<FoodFamilyItem> _foodFamilies = [];
   GenericIngredientItem? _selectedCatalogItem;
-  int? _selectedFoodIdFromCatalog;
   int? _selectedFoodFamilyId;
+
+  // 🔁 Modo de cálculo
+  bool _knowsGrams = true; // true = gramos + kcal/100g, false = kcal total
+
+  // Lista de ingredientes del plato
+  final List<_MealIngredient> _mealItems = [];
+  int? _editingIndex;
 
   @override
   void initState() {
@@ -72,7 +78,7 @@ class _RegisterExtraFoodScreenState extends State<RegisterExtraFoodScreen> {
       if (!mounted) return;
       setState(() {
         _catalogItems = ingredients;
-        _filteredItems = ingredients;
+        _filteredItems = [];
         _foodFamilies = families;
         _loadingCatalog = false;
       });
@@ -90,7 +96,7 @@ class _RegisterExtraFoodScreenState extends State<RegisterExtraFoodScreen> {
   void _filterCatalog() {
     final q = _searchCtrl.text.trim().toLowerCase();
     if (q.isEmpty) {
-      setState(() => _filteredItems = _catalogItems);
+      setState(() => _filteredItems = []);
       return;
     }
     setState(() {
@@ -100,21 +106,94 @@ class _RegisterExtraFoodScreenState extends State<RegisterExtraFoodScreen> {
     });
   }
 
-  Future<int?> _resolveFoodIdFromCatalog(int genericIngredientId) async {
-    final uri = Uri.parse(
-      ApiConfig.url("/generic-ingredient/$genericIngredientId"),
+  void _clearItemInputs() {
+    _nameCtrl.clear();
+    _kcalCtrl.clear();
+    _qtyCtrl.clear();
+    _selectedFoodFamilyId = null;
+    _selectedCatalogItem = null;
+    _editingIndex = null;
+  }
+
+  void _addOrUpdateIngredient() {
+    final name = _nameCtrl.text.trim();
+    final kcalStr = _kcalCtrl.text.trim();
+    final gramsStr = _qtyCtrl.text.trim();
+
+    if (name.isEmpty || kcalStr.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Completa nombre y calorías.")),
+      );
+      return;
+    }
+
+    if (_selectedFoodFamilyId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Selecciona la familia de alimentos.")),
+      );
+      return;
+    }
+
+    final kcalInput = int.tryParse(kcalStr);
+    if (kcalInput == null || kcalInput <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Calorías inválidas.")),
+      );
+      return;
+    }
+
+    int? grams;
+    if (_knowsGrams) {
+      grams = int.tryParse(gramsStr);
+      if (grams == null || grams <= 0) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Gramos inválidos.")),
+        );
+        return;
+      }
+    }
+
+    final item = _MealIngredient(
+      name: name,
+      kcalInput: kcalInput,
+      grams: grams,
+      knowsGrams: _knowsGrams,
+      foodFamilyId: _selectedFoodFamilyId!,
+      fromCatalog: _selectedCatalogItem != null,
     );
-    final res = await http.get(uri);
-    if (res.statusCode < 200 || res.statusCode >= 300) {
-      throw Exception("GET generic-ingredient failed: ${res.body}");
-    }
-    final decoded = jsonDecode(res.body);
-    if (decoded is Map && decoded["foodId"] != null) {
-      final id = decoded["foodId"];
-      if (id is int) return id;
-      if (id is num) return id.toInt();
-    }
-    return null;
+
+    setState(() {
+      if (_editingIndex != null) {
+        _mealItems[_editingIndex!] = item;
+      } else {
+        _mealItems.add(item);
+      }
+      _clearItemInputs();
+    });
+  }
+
+  void _editIngredient(int index) {
+    final item = _mealItems[index];
+    setState(() {
+      _editingIndex = index;
+      _knowsGrams = item.knowsGrams;
+      _nameCtrl.text = item.name;
+      _kcalCtrl.text = item.kcalInput.toString();
+      _qtyCtrl.text = item.grams?.toString() ?? '';
+      _selectedFoodFamilyId = item.foodFamilyId;
+      _selectedCatalogItem = null;
+    });
+  }
+
+  void _deleteIngredient(int index) {
+    setState(() {
+      _mealItems.removeAt(index);
+      if (_editingIndex == index) {
+        _clearItemInputs();
+      } else if (_editingIndex != null && _editingIndex! > index) {
+        _editingIndex = _editingIndex! - 1;
+      }
+    });
   }
 
   // ===================== CAMARA FOTO =====================
@@ -126,13 +205,11 @@ class _RegisterExtraFoodScreenState extends State<RegisterExtraFoodScreen> {
 
     if (!mounted) return;
 
-    if (file == null) return; // cancelado
+    if (file == null) return;
 
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(SnackBar(content: Text("Foto tomada: ${file.name}")));
-
-    // ✅ aquí luego lo mandas a tu backend/IA si quieres
   }
 
   // ===================== CAMARA ESCANEO =====================
@@ -148,11 +225,9 @@ class _RegisterExtraFoodScreenState extends State<RegisterExtraFoodScreen> {
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(SnackBar(content: Text("Código detectado: $result")));
-
-    // ✅ aquí luego consultas API con el barcode (OpenFoodFacts o tu backend)
   }
 
-  // ===================== PICKER HORA estilo iOS (TU APP) =====================
+  // ===================== PICKER HORA estilo iOS =====================
   Future<void> _pickTimeIOS() async {
     final now = DateTime.now();
     DateTime temp = DateTime(
@@ -178,7 +253,6 @@ class _RegisterExtraFoodScreenState extends State<RegisterExtraFoodScreen> {
             ),
             child: Column(
               children: [
-                // Barra superior (estilo tu app)
                 Padding(
                   padding: const EdgeInsets.fromLTRB(14, 12, 14, 10),
                   child: Row(
@@ -224,9 +298,7 @@ class _RegisterExtraFoodScreenState extends State<RegisterExtraFoodScreen> {
                     ],
                   ),
                 ),
-
                 Container(height: 1, color: const Color(0xFFE9E9EE)),
-
                 Expanded(
                   child: CupertinoTheme(
                     data: const CupertinoThemeData(
@@ -247,7 +319,6 @@ class _RegisterExtraFoodScreenState extends State<RegisterExtraFoodScreen> {
                     ),
                   ),
                 ),
-
                 const SizedBox(height: 10),
               ],
             ),
@@ -293,37 +364,27 @@ class _RegisterExtraFoodScreenState extends State<RegisterExtraFoodScreen> {
       if (_selectedTime == null) {
         throw Exception("Selecciona la hora de consumo.");
       }
+      if (_mealItems.isEmpty) {
+        throw Exception("Añade al menos un ingrediente.");
+      }
 
       final profileId = await ProfileService().findOrCreateProfileId(
         accountId: accountId,
         profileName: profileName.isEmpty ? "Perfil" : profileName,
       );
 
-      int? foodId = _selectedFoodIdFromCatalog;
+      final List<int> foodIds = [];
 
-      if (foodId == null) {
-        final name = _nameCtrl.text.trim();
-        final kcalStr = _kcalCtrl.text.trim();
-        if (name.isEmpty || kcalStr.isEmpty) {
-          throw Exception("Completa nombre y calorías.");
-        }
-        if (_selectedFoodFamilyId == null) {
-          throw Exception("Selecciona la familia de alimentos.");
-        }
-
-        final kcal = int.tryParse(kcalStr) ?? 0;
-        final qty = int.tryParse(_qtyCtrl.text.trim());
-        final totalKcal = (qty != null && qty > 0) ? kcal * qty : kcal;
-
+      for (final item in _mealItems) {
         final uri = Uri.parse(ApiConfig.url("/specific-ingredient/"));
         final res = await http.post(
           uri,
           headers: {"Content-Type": "application/json"},
           body: jsonEncode({
-            "name": name,
-            "food_family_id": _selectedFoodFamilyId,
+            "name": item.displayName,
+            "food_family_id": item.foodFamilyId,
             "account_id": accountId,
-            "kcal": totalKcal,
+            "kcal": item.totalKcal,
           }),
         );
 
@@ -334,14 +395,10 @@ class _RegisterExtraFoodScreenState extends State<RegisterExtraFoodScreen> {
         final decoded = jsonDecode(res.body);
         final rawFoodId = decoded["foodId"];
         if (rawFoodId is num) {
-          foodId = rawFoodId.toInt();
+          foodIds.add(rawFoodId.toInt());
         } else {
-          foodId = null;
+          throw Exception("No se pudo resolver foodId.");
         }
-      }
-
-      if (foodId == null) {
-        throw Exception("No se pudo resolver foodId.");
       }
 
       final now = DateTime.now();
@@ -356,7 +413,7 @@ class _RegisterExtraFoodScreenState extends State<RegisterExtraFoodScreen> {
       final mealPayload = {
         "account_id": accountId,
         "profilIds": [profileId],
-        "foodIds": [foodId],
+        "foodIds": foodIds,
         "eating_moment": _mapEatingMoment(selectedType),
         "eaten": true,
         "datetime": mealTime.toIso8601String(),
@@ -388,13 +445,12 @@ class _RegisterExtraFoodScreenState extends State<RegisterExtraFoodScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final bool isEditing = _editingIndex != null;
+
     return Scaffold(
       backgroundColor: screenBg,
-
-      // ================= HEADER + BODY =================
       body: Column(
         children: [
-          // HEADER
           Container(
             width: double.infinity,
             padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
@@ -440,8 +496,7 @@ class _RegisterExtraFoodScreenState extends State<RegisterExtraFoodScreen> {
                       width: 36,
                       height: 36,
                       decoration: BoxDecoration(
-                        // ignore: deprecated_member_use
-                        color: Colors.white.withOpacity(0.18),
+                        color: Colors.white.withValues(alpha: 0.18),
                         borderRadius: BorderRadius.circular(18),
                       ),
                       child: const Icon(Icons.close, color: Colors.white),
@@ -452,14 +507,12 @@ class _RegisterExtraFoodScreenState extends State<RegisterExtraFoodScreen> {
             ),
           ),
 
-          // CONTENIDO
           Expanded(
             child: SingleChildScrollView(
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 110),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // 🔍 BUSCADOR
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 14),
                     decoration: BoxDecoration(
@@ -484,7 +537,6 @@ class _RegisterExtraFoodScreenState extends State<RegisterExtraFoodScreen> {
 
                   const SizedBox(height: 14),
 
-                  // 📷 ACCIONES RÁPIDAS
                   Row(
                     children: [
                       _actionButton(
@@ -503,7 +555,7 @@ class _RegisterExtraFoodScreenState extends State<RegisterExtraFoodScreen> {
                     ],
                   ),
 
-                  const SizedBox(height: 22),
+                  const SizedBox(height: 18),
 
                   const Text(
                     "Catálogo de ingredientes",
@@ -516,6 +568,8 @@ class _RegisterExtraFoodScreenState extends State<RegisterExtraFoodScreen> {
 
                   if (_loadingCatalog)
                     const Center(child: CircularProgressIndicator())
+                  else if (_filteredItems.isEmpty)
+                    const SizedBox.shrink()
                   else
                     SizedBox(
                       height: 200,
@@ -524,28 +578,21 @@ class _RegisterExtraFoodScreenState extends State<RegisterExtraFoodScreen> {
                         separatorBuilder: (_, __) => const SizedBox(height: 6),
                         itemBuilder: (context, index) {
                           final item = _filteredItems[index];
-                          final selected = _selectedCatalogItem?.id == item.id;
                           return ListTile(
-                            tileColor:
-                                selected ? softGreen : Colors.white,
+                            tileColor: Colors.white,
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12),
-                              side: BorderSide(
-                                color: selected
-                                    ? primaryGreen
-                                    : const Color(0xFFE6E6E6),
+                              side: const BorderSide(
+                                color: Color(0xFFE6E6E6),
                               ),
                             ),
                             title: Text(item.name),
-                            trailing: selected
-                                ? const Icon(Icons.check, color: primaryGreen)
-                                : null,
-                            onTap: () async {
-                              final foodId =
-                                  await _resolveFoodIdFromCatalog(item.id);
+                            onTap: () {
                               setState(() {
                                 _selectedCatalogItem = item;
-                                _selectedFoodIdFromCatalog = foodId;
+                                _nameCtrl.text = item.name;
+                                _selectedFoodFamilyId = item.foodFamilyId;
+                                _filteredItems = [];
                               });
                             },
                           );
@@ -553,9 +600,8 @@ class _RegisterExtraFoodScreenState extends State<RegisterExtraFoodScreen> {
                       ),
                     ),
 
-                  const SizedBox(height: 18),
-
-                  if (_selectedCatalogItem != null)
+                  if (_selectedCatalogItem != null) ...[
+                    const SizedBox(height: 8),
                     Text(
                       "Seleccionado: ${_selectedCatalogItem!.name}",
                       style: const TextStyle(
@@ -564,10 +610,10 @@ class _RegisterExtraFoodScreenState extends State<RegisterExtraFoodScreen> {
                         fontWeight: FontWeight.w600,
                       ),
                     ),
+                  ],
 
-                  const SizedBox(height: 14),
+                  const SizedBox(height: 18),
 
-                  // 🍽️ TIPO DE COMIDA
                   const Text(
                     "Tipo de comida",
                     style: TextStyle(
@@ -591,7 +637,6 @@ class _RegisterExtraFoodScreenState extends State<RegisterExtraFoodScreen> {
 
                   const SizedBox(height: 22),
 
-                  // 🕒 HORA (estilo como tu imagen)
                   const Text(
                     "Hora de consumo",
                     style: TextStyle(
@@ -655,72 +700,189 @@ class _RegisterExtraFoodScreenState extends State<RegisterExtraFoodScreen> {
 
                   const SizedBox(height: 22),
 
-                  // 🧩 ENTRADA PERSONALIZADA
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: softGreen,
-                      borderRadius: BorderRadius.circular(18),
-                      border: Border.all(color: borderGreen, width: 1.6),
+                  const Text(
+                    "Ingredientes del plato",
+                    style: TextStyle(
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF1A1A1A),
                     ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                  ),
+                  const SizedBox(height: 10),
+
+                  // 🔁 TOGGLE
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: borderGreen, width: 1.2),
+                    ),
+                    child: Row(
                       children: [
-                        const Text(
-                          "Si no está en el catálogo, créalo aquí",
-                          style: TextStyle(
-                            fontSize: 13.5,
-                            fontWeight: FontWeight.w700,
-                            color: Color(0xFF1A1A1A),
+                        Expanded(
+                          child: Text(
+                            _knowsGrams ? "Sé los gramos" : "Sé las calorías",
+                            style: const TextStyle(
+                              fontSize: 13.5,
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
                         ),
-                        const SizedBox(height: 10),
-
-                        _softInput(
-                          controller: _nameCtrl,
-                          hint: "Nombre de la comida",
-                        ),
-
-                        const SizedBox(height: 10),
-
-                        Row(
-                          children: [
-                            Expanded(
-                              child: _softInput(
-                                controller: _kcalCtrl,
-                                hint: "Calorías",
-                                keyboardType: TextInputType.number,
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: _softInput(
-                                controller: _qtyCtrl,
-                                hint: "Cantidad",
-                                keyboardType: TextInputType.number,
-                              ),
-                            ),
-                          ],
-                        ),
-
-                        const SizedBox(height: 12),
-
-                        DropdownButtonFormField<int>(
-                          value: _selectedFoodFamilyId,
-                          decoration: _dropdownStyle(),
-                          hint: const Text("Selecciona familia de alimentos"),
-                          items: _foodFamilies.map((f) {
-                            return DropdownMenuItem<int>(
-                              value: f.id,
-                              child: Text(f.name),
-                            );
-                          }).toList(),
-                          onChanged: (v) =>
-                              setState(() => _selectedFoodFamilyId = v),
+                        Switch(
+                          value: _knowsGrams,
+                          activeThumbColor: primaryGreen,
+                          onChanged: (v) {
+                            setState(() {
+                              _knowsGrams = v;
+                              _nameCtrl.clear();
+                              _kcalCtrl.clear();
+                              _qtyCtrl.clear();
+                              _selectedFoodFamilyId = null;
+                              _selectedCatalogItem = null;
+                              _editingIndex = null;
+                            });
+                          },
                         ),
                       ],
                     ),
                   ),
+
+                  const SizedBox(height: 10),
+
+                  _softInput(
+                    controller: _nameCtrl,
+                    hint: "Nombre de la comida",
+                  ),
+
+                  const SizedBox(height: 10),
+
+                  if (_knowsGrams) ...[
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _softInput(
+                            controller: _kcalCtrl,
+                            hint: "Kcal por 100g",
+                            keyboardType: TextInputType.number,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: _softInput(
+                            controller: _qtyCtrl,
+                            hint: "Gramos",
+                            keyboardType: TextInputType.number,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ] else ...[
+                    _softInput(
+                      controller: _kcalCtrl,
+                      hint: "Calorías totales",
+                      keyboardType: TextInputType.number,
+                    ),
+                  ],
+
+                  const SizedBox(height: 12),
+
+                  DropdownButtonFormField<int>(
+                    initialValue: _selectedFoodFamilyId,
+                    decoration: _dropdownStyle(),
+                    hint: const Text("Selecciona familia de alimentos"),
+                    items: _foodFamilies.map((f) {
+                      return DropdownMenuItem<int>(
+                        value: f.id,
+                        child: Text(f.name),
+                      );
+                    }).toList(),
+                    onChanged: (v) =>
+                        setState(() => _selectedFoodFamilyId = v),
+                  ),
+
+                  const SizedBox(height: 12),
+
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: _addOrUpdateIngredient,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: primaryGreen,
+                        minimumSize: const Size(double.infinity, 44),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        elevation: 0,
+                      ),
+                      child: Text(
+                        isEditing ? "Actualizar ingrediente" : "Añadir ingrediente",
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  if (_mealItems.isEmpty)
+                    const Text(
+                      "No hay ingredientes añadidos.",
+                      style: TextStyle(fontSize: 12.5, color: textGrey),
+                    )
+                  else
+                    ListView.separated(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      itemCount: _mealItems.length,
+                      separatorBuilder: (_, __) => const SizedBox(height: 8),
+                      itemBuilder: (context, index) {
+                        final item = _mealItems[index];
+                        return Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: const Color(0xFFE6E6E6)),
+                          ),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      item.displayName,
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      "Kcal: ${item.totalKcal} | ${item.knowsGrams ? '${item.kcalInput} kcal/100g' : 'kcal totales'}",
+                                      style: const TextStyle(
+                                        fontSize: 12,
+                                        color: Color(0xFF6B7280),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              IconButton(
+                                onPressed: () => _editIngredient(index),
+                                icon: const Icon(Icons.edit, size: 20),
+                              ),
+                              IconButton(
+                                onPressed: () => _deleteIngredient(index),
+                                icon: const Icon(Icons.delete, size: 20),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
                 ],
               ),
             ),
@@ -728,7 +890,6 @@ class _RegisterExtraFoodScreenState extends State<RegisterExtraFoodScreen> {
         ],
       ),
 
-      // ================= BOTÓN FIJO =================
       bottomNavigationBar: Padding(
         padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
         child: ElevatedButton.icon(
@@ -833,7 +994,7 @@ class _RegisterExtraFoodScreenState extends State<RegisterExtraFoodScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.88),
+        color: Colors.white.withValues(alpha: 0.88),
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: borderGreen, width: 1.6),
       ),
@@ -869,5 +1030,33 @@ class _RegisterExtraFoodScreenState extends State<RegisterExtraFoodScreen> {
       ),
       border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
     );
+  }
+}
+
+class _MealIngredient {
+  _MealIngredient({
+    required this.name,
+    required this.kcalInput,
+    required this.knowsGrams,
+    required this.foodFamilyId,
+    this.grams,
+    this.fromCatalog = false,
+  });
+
+  final String name;
+  final int kcalInput;
+  final int? grams;
+  final bool knowsGrams;
+  final int foodFamilyId;
+  final bool fromCatalog;
+
+  int get totalKcal {
+    if (!knowsGrams || grams == null || grams! <= 0) return kcalInput;
+    return ((kcalInput * grams!) / 100).round();
+    }
+
+  String get displayName {
+    if (grams == null || grams! <= 0) return name;
+    return "$name (${grams}g)";
   }
 }

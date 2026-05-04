@@ -28,7 +28,7 @@ class MealService {
 
   // Nuevo método para buscar por fecha
   Future<List<MealItem>> fetchMealsByDate(int accountId, String date) async {
-    final url = Uri.parse(ApiConfig.url('/meal/account/$accountId?date=$date'));
+    final url = Uri.parse(ApiConfig.url('/meal/account/$accountId/date/$date'));
     print('Intentando fetch: $url');
     final response = await http.get(url);
 

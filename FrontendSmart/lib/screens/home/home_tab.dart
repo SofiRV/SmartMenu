@@ -62,7 +62,7 @@ class _HomeTabState extends State<HomeTab> {
     final mealService = MealService(ApiConfig.baseUrl);
 
     final now = DateTime.now();
-    String format(DateTime d) => DateFormat('yyyy-MM-dd').format(d);
+    String format(DateTime d) => DateFormat('dd-MM-yyyy').format(d);
 
     // Carga el nombre de usuario
     await _getUsername();

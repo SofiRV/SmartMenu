@@ -82,6 +82,38 @@ class GenericIngredientItem {
   }
 }
 
+class GenericRecipeItem {
+  final int id;
+  final String name;
+  final int? foodId;
+  final int? kcal;
+
+  GenericRecipeItem({
+    required this.id,
+    required this.name,
+    this.foodId,
+    this.kcal,
+  });
+
+  factory GenericRecipeItem.fromJson(Map<String, dynamic> json) {
+    final rawId = json['id'];
+    final id = rawId is int ? rawId : (rawId as num).toInt();
+
+    final rawFoodId = json['foodId'];
+    final foodId = rawFoodId is num ? rawFoodId.toInt() : null;
+
+    final rawKcal = json['kcal'];
+    final kcal = rawKcal is num ? rawKcal.toInt() : null;
+
+    return GenericRecipeItem(
+      id: id,
+      name: (json['name'] ?? json['self_name'] ?? '').toString(),
+      foodId: foodId,
+      kcal: kcal,
+    );
+  }
+}
+
 class CatalogService {
   Future<List<CatalogItem>> getDietTypes() async {
     final uri = Uri.parse(ApiConfig.url("/account/diet-types"));
@@ -146,5 +178,18 @@ class CatalogService {
     final decoded = jsonDecode(res.body);
     if (decoded is List) return decoded.map((e) => GenericIngredientItem.fromJson(e)).toList();
     throw Exception("Unexpected generic-ingredient response: ${res.body}");
+  }
+
+  Future<List<GenericRecipeItem>> getAllGenericRecipes() async {
+    final uri = Uri.parse(ApiConfig.url("/generic-recipe/"));
+    final res = await http.get(uri);
+
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      throw Exception("GET generic-recipe failed: HTTP ${res.statusCode}: ${res.body}");
+    }
+
+    final decoded = jsonDecode(res.body);
+    if (decoded is List) return decoded.map((e) => GenericRecipeItem.fromJson(e)).toList();
+    throw Exception("Unexpected generic-recipe response: ${res.body}");
   }
 }

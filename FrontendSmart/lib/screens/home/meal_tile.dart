@@ -86,7 +86,9 @@ class MealTile extends StatelessWidget {
                       fontSize: 14.5,
                       fontWeight: FontWeight.w600,
                       color: const Color(0xFF1A1A1A),
-                      decoration: item.done ? TextDecoration.lineThrough : null,
+                      decoration: (onToggleDone != null && item.done)
+                          ? TextDecoration.lineThrough
+                          : null,
                     ),
                   ),
                   const SizedBox(height: 4),

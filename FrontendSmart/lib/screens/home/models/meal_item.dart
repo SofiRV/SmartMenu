@@ -37,20 +37,36 @@ class MealItem {
     );
   }
 
+  static String _mapMoment(String raw) {
+    switch (raw) {
+      case "breakfast":
+        return "Desayuno";
+      case "mid_morning_snack":
+        return "Snack";
+      case "lunch":
+        return "Comida";
+      case "afternoon_snack":
+        return "Merienda";
+      case "dinner":
+        return "Cena";
+      default:
+        return raw;
+    }
+  }
+
   // Construir desde el backend
   factory MealItem.fromBackend(Map<String, dynamic> json) {
     final foods = (json['foods'] as List?) ?? [];
     final mainFood = foods.isNotEmpty ? foods.first : null;
 
-    final String icon = "assets/icons/default_food.png"; // adapta según momento/tipo si lo deseas
-    final String tag = mainFood != null && mainFood['name'] != null
+    final String icon = "🍽️";
+    final String foodName = mainFood != null && mainFood['name'] != null
         ? mainFood['name'] as String
-        : "";
+        : "Comida";
 
-    // Obtén solo la hora
     final String datetime = json['datetime'] ?? "";
     final String time =
-        datetime.length > 10 ? datetime.substring(11, 16) : "--:--";
+        datetime.length >= 16 ? datetime.substring(11, 16) : "--:--";
 
     int? mealKcal = json['kcal'] is num ? (json['kcal'] as num).toInt() : null;
 
@@ -65,12 +81,13 @@ class MealItem {
     }
 
     final String kcal = mealKcal?.toString() ?? "--";
+    final String moment = json['eatingMoment'] ?? "";
 
     return MealItem(
       id: json['id'].toString(),
       icon: icon,
-      title: json['eatingMoment'] ?? "",
-      tag: tag,
+      title: foodName,
+      tag: _mapMoment(moment),
       time: time,
       kcal: kcal,
       done: json['eaten'] ?? false,
