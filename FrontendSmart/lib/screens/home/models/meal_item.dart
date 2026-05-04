@@ -52,8 +52,19 @@ class MealItem {
     final String time =
         datetime.length > 10 ? datetime.substring(11, 16) : "--:--";
 
-    final String kcal =
-        mainFood != null && mainFood['kcal'] != null ? mainFood['kcal'].toString() : "--";
+    int? mealKcal = json['kcal'] is num ? (json['kcal'] as num).toInt() : null;
+
+    if (mealKcal == null || mealKcal == 0) {
+      int sum = 0;
+      for (final food in foods) {
+        final raw = (food as Map?)?['kcal'];
+        final kcal = raw is num ? raw.toInt() : int.tryParse(raw?.toString() ?? "");
+        if (kcal != null) sum += kcal;
+      }
+      mealKcal = sum > 0 ? sum : null;
+    }
+
+    final String kcal = mealKcal?.toString() ?? "--";
 
     return MealItem(
       id: json['id'].toString(),

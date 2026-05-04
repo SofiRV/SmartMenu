@@ -48,6 +48,15 @@ class _HomeTabState extends State<HomeTab> {
     });
   }
 
+  int _sumCalories(List<MealItem> meals) {
+    int total = 0;
+    for (final meal in meals) {
+      final parsed = int.tryParse(meal.kcal) ?? 0;
+      total += parsed;
+    }
+    return total;
+  }
+
   Future<void> _getAllData() async {
     final controller = Provider.of<HomeController>(context, listen: false);
     final mealService = MealService(ApiConfig.baseUrl);
@@ -107,8 +116,7 @@ class _HomeTabState extends State<HomeTab> {
         final String avatarEmoji = "👩";
         final String nameToShow = username ?? "Cargando...";
 
-        // Calorías ejemplo (ajusta según tu lógica)
-        const int caloriesConsumed = 720;
+        final int caloriesConsumed = _sumCalories(controller.eatenToday);
         final int caloriesGoal = _caloriesGoal ?? 2000;
 
         final yesterday = controller.yesterday;

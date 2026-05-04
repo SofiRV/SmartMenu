@@ -1,7 +1,15 @@
+import 'dart:convert';
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:http/http.dart' as http;
+
 import 'scan_code_screen.dart';
+import '../services/api_config.dart';
+import '../services/catalog_service.dart';
+import '../services/profile_service.dart';
 
 class RegisterExtraFoodScreen extends StatefulWidget {
   const RegisterExtraFoodScreen({super.key});
@@ -26,15 +34,87 @@ class _RegisterExtraFoodScreenState extends State<RegisterExtraFoodScreen> {
   final TextEditingController _nameCtrl = TextEditingController();
   final TextEditingController _kcalCtrl = TextEditingController();
   final TextEditingController _qtyCtrl = TextEditingController();
+  final TextEditingController _searchCtrl = TextEditingController();
 
   TimeOfDay? _selectedTime;
+
+  // Catalog
+  bool _loadingCatalog = true;
+  List<GenericIngredientItem> _catalogItems = [];
+  List<GenericIngredientItem> _filteredItems = [];
+  List<FoodFamilyItem> _foodFamilies = [];
+  GenericIngredientItem? _selectedCatalogItem;
+  int? _selectedFoodIdFromCatalog;
+  int? _selectedFoodFamilyId;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCatalog();
+    _searchCtrl.addListener(_filterCatalog);
+  }
 
   @override
   void dispose() {
     _nameCtrl.dispose();
     _kcalCtrl.dispose();
     _qtyCtrl.dispose();
+    _searchCtrl.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadCatalog() async {
+    try {
+      final catalogService = CatalogService();
+      final ingredients = await catalogService.getAllGenericIngredients();
+      final families = await catalogService.getAllFoodFamilies();
+
+      if (!mounted) return;
+      setState(() {
+        _catalogItems = ingredients;
+        _filteredItems = ingredients;
+        _foodFamilies = families;
+        _loadingCatalog = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loadingCatalog = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Error cargando catálogo: $e")),
+      );
+    }
+  }
+
+  void _filterCatalog() {
+    final q = _searchCtrl.text.trim().toLowerCase();
+    if (q.isEmpty) {
+      setState(() => _filteredItems = _catalogItems);
+      return;
+    }
+    setState(() {
+      _filteredItems = _catalogItems
+          .where((i) => i.name.toLowerCase().contains(q))
+          .toList();
+    });
+  }
+
+  Future<int?> _resolveFoodIdFromCatalog(int genericIngredientId) async {
+    final uri = Uri.parse(
+      ApiConfig.url("/generic-ingredient/$genericIngredientId"),
+    );
+    final res = await http.get(uri);
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      throw Exception("GET generic-ingredient failed: ${res.body}");
+    }
+    final decoded = jsonDecode(res.body);
+    if (decoded is Map && decoded["foodId"] != null) {
+      final id = decoded["foodId"];
+      if (id is int) return id;
+      if (id is num) return id.toInt();
+    }
+    return null;
   }
 
   // ===================== CAMARA FOTO =====================
@@ -162,7 +242,7 @@ class _RegisterExtraFoodScreenState extends State<RegisterExtraFoodScreen> {
                     child: CupertinoDatePicker(
                       mode: CupertinoDatePickerMode.time,
                       initialDateTime: temp,
-                      use24hFormat: true, // si quieres AM/PM -> pon false
+                      use24hFormat: true,
                       onDateTimeChanged: (d) => temp = d,
                     ),
                   ),
@@ -182,6 +262,128 @@ class _RegisterExtraFoodScreenState extends State<RegisterExtraFoodScreen> {
     final h = _selectedTime!.hour.toString().padLeft(2, '0');
     final m = _selectedTime!.minute.toString().padLeft(2, '0');
     return "$h:$m";
+  }
+
+  String _mapEatingMoment(String type) {
+    switch (type) {
+      case "Desayuno":
+        return "breakfast";
+      case "Snack":
+        return "mid_morning_snack";
+      case "Comida":
+        return "lunch";
+      case "Merienda":
+        return "afternoon_snack";
+      case "Cena":
+        return "dinner";
+      default:
+        return "lunch";
+    }
+  }
+
+  Future<void> _submit() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final accountId = prefs.getInt('accountId');
+      final profileName = prefs.getString('profileName') ?? '';
+
+      if (accountId == null) {
+        throw Exception("No se encontró accountId en SharedPreferences.");
+      }
+      if (_selectedTime == null) {
+        throw Exception("Selecciona la hora de consumo.");
+      }
+
+      final profileId = await ProfileService().findOrCreateProfileId(
+        accountId: accountId,
+        profileName: profileName.isEmpty ? "Perfil" : profileName,
+      );
+
+      int? foodId = _selectedFoodIdFromCatalog;
+
+      if (foodId == null) {
+        final name = _nameCtrl.text.trim();
+        final kcalStr = _kcalCtrl.text.trim();
+        if (name.isEmpty || kcalStr.isEmpty) {
+          throw Exception("Completa nombre y calorías.");
+        }
+        if (_selectedFoodFamilyId == null) {
+          throw Exception("Selecciona la familia de alimentos.");
+        }
+
+        final kcal = int.tryParse(kcalStr) ?? 0;
+        final qty = int.tryParse(_qtyCtrl.text.trim());
+        final totalKcal = (qty != null && qty > 0) ? kcal * qty : kcal;
+
+        final uri = Uri.parse(ApiConfig.url("/specific-ingredient/"));
+        final res = await http.post(
+          uri,
+          headers: {"Content-Type": "application/json"},
+          body: jsonEncode({
+            "name": name,
+            "food_family_id": _selectedFoodFamilyId,
+            "account_id": accountId,
+            "kcal": totalKcal,
+          }),
+        );
+
+        if (res.statusCode < 200 || res.statusCode >= 300) {
+          throw Exception("Crear ingrediente falló: ${res.body}");
+        }
+
+        final decoded = jsonDecode(res.body);
+        final rawFoodId = decoded["foodId"];
+        if (rawFoodId is num) {
+          foodId = rawFoodId.toInt();
+        } else {
+          foodId = null;
+        }
+      }
+
+      if (foodId == null) {
+        throw Exception("No se pudo resolver foodId.");
+      }
+
+      final now = DateTime.now();
+      final mealTime = DateTime(
+        now.year,
+        now.month,
+        now.day,
+        _selectedTime!.hour,
+        _selectedTime!.minute,
+      );
+
+      final mealPayload = {
+        "account_id": accountId,
+        "profilIds": [profileId],
+        "foodIds": [foodId],
+        "eating_moment": _mapEatingMoment(selectedType),
+        "eaten": true,
+        "datetime": mealTime.toIso8601String(),
+      };
+
+      final mealUri = Uri.parse(ApiConfig.url("/meal/"));
+      final mealRes = await http.post(
+        mealUri,
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode(mealPayload),
+      );
+
+      if (mealRes.statusCode < 200 || mealRes.statusCode >= 300) {
+        throw Exception("Crear meal falló: ${mealRes.body}");
+      }
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Comida registrada ✅")),
+      );
+      Navigator.pop(context);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Error: $e")),
+      );
+    }
   }
 
   @override
@@ -238,6 +440,7 @@ class _RegisterExtraFoodScreenState extends State<RegisterExtraFoodScreen> {
                       width: 36,
                       height: 36,
                       decoration: BoxDecoration(
+                        // ignore: deprecated_member_use
                         color: Colors.white.withOpacity(0.18),
                         borderRadius: BorderRadius.circular(18),
                       ),
@@ -269,8 +472,9 @@ class _RegisterExtraFoodScreenState extends State<RegisterExtraFoodScreen> {
                         ),
                       ],
                     ),
-                    child: const TextField(
-                      decoration: InputDecoration(
+                    child: TextField(
+                      controller: _searchCtrl,
+                      decoration: const InputDecoration(
                         icon: Icon(Icons.search),
                         hintText: "Buscar comida o bebida...",
                         border: InputBorder.none,
@@ -300,6 +504,68 @@ class _RegisterExtraFoodScreenState extends State<RegisterExtraFoodScreen> {
                   ),
 
                   const SizedBox(height: 22),
+
+                  const Text(
+                    "Catálogo de ingredientes",
+                    style: TextStyle(
+                      fontSize: 14.5,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+
+                  if (_loadingCatalog)
+                    const Center(child: CircularProgressIndicator())
+                  else
+                    SizedBox(
+                      height: 200,
+                      child: ListView.separated(
+                        itemCount: _filteredItems.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 6),
+                        itemBuilder: (context, index) {
+                          final item = _filteredItems[index];
+                          final selected = _selectedCatalogItem?.id == item.id;
+                          return ListTile(
+                            tileColor:
+                                selected ? softGreen : Colors.white,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              side: BorderSide(
+                                color: selected
+                                    ? primaryGreen
+                                    : const Color(0xFFE6E6E6),
+                              ),
+                            ),
+                            title: Text(item.name),
+                            trailing: selected
+                                ? const Icon(Icons.check, color: primaryGreen)
+                                : null,
+                            onTap: () async {
+                              final foodId =
+                                  await _resolveFoodIdFromCatalog(item.id);
+                              setState(() {
+                                _selectedCatalogItem = item;
+                                _selectedFoodIdFromCatalog = foodId;
+                              });
+                            },
+                          );
+                        },
+                      ),
+                    ),
+
+                  const SizedBox(height: 18),
+
+                  if (_selectedCatalogItem != null)
+                    Text(
+                      "Seleccionado: ${_selectedCatalogItem!.name}",
+                      style: const TextStyle(
+                        fontSize: 13,
+                        color: primaryGreen,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+
+                  const SizedBox(height: 14),
 
                   // 🍽️ TIPO DE COMIDA
                   const Text(
@@ -389,7 +655,7 @@ class _RegisterExtraFoodScreenState extends State<RegisterExtraFoodScreen> {
 
                   const SizedBox(height: 22),
 
-                  // 🧩 ENTRADA PERSONALIZADA (redondeado como imagen)
+                  // 🧩 ENTRADA PERSONALIZADA
                   Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
@@ -400,52 +666,15 @@ class _RegisterExtraFoodScreenState extends State<RegisterExtraFoodScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Container(
-                              width: 46,
-                              height: 46,
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFDDF7EE),
-                                borderRadius: BorderRadius.circular(16),
-                              ),
-                              child: const Icon(
-                                Icons.add,
-                                color: primaryGreen,
-                                size: 24,
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            const Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    "Entrada personalizada",
-                                    style: TextStyle(
-                                      fontSize: 14.5,
-                                      fontWeight: FontWeight.w800,
-                                      color: Color(0xFF1A1A1A),
-                                    ),
-                                  ),
-                                  SizedBox(height: 4),
-                                  Text(
-                                    "Añade manualmente el nombre\ny calorías",
-                                    style: TextStyle(
-                                      fontSize: 12.8,
-                                      height: 1.2,
-                                      color: textGrey,
-                                      fontWeight: FontWeight.w400,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
+                        const Text(
+                          "Si no está en el catálogo, créalo aquí",
+                          style: TextStyle(
+                            fontSize: 13.5,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFF1A1A1A),
+                          ),
                         ),
-
-                        const SizedBox(height: 12),
+                        const SizedBox(height: 10),
 
                         _softInput(
                           controller: _nameCtrl,
@@ -473,6 +702,22 @@ class _RegisterExtraFoodScreenState extends State<RegisterExtraFoodScreen> {
                             ),
                           ],
                         ),
+
+                        const SizedBox(height: 12),
+
+                        DropdownButtonFormField<int>(
+                          value: _selectedFoodFamilyId,
+                          decoration: _dropdownStyle(),
+                          hint: const Text("Selecciona familia de alimentos"),
+                          items: _foodFamilies.map((f) {
+                            return DropdownMenuItem<int>(
+                              value: f.id,
+                              child: Text(f.name),
+                            );
+                          }).toList(),
+                          onChanged: (v) =>
+                              setState(() => _selectedFoodFamilyId = v),
+                        ),
                       ],
                     ),
                   ),
@@ -487,12 +732,7 @@ class _RegisterExtraFoodScreenState extends State<RegisterExtraFoodScreen> {
       bottomNavigationBar: Padding(
         padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
         child: ElevatedButton.icon(
-          onPressed: () {
-            debugPrint(
-              "tipo=$selectedType time=${_timeLabel()} nombre=${_nameCtrl.text} kcal=${_kcalCtrl.text} qty=${_qtyCtrl.text}",
-            );
-            Navigator.pop(context);
-          },
+          onPressed: _submit,
           style: ElevatedButton.styleFrom(
             backgroundColor: primaryGreen,
             minimumSize: const Size(double.infinity, 52),
@@ -606,6 +846,28 @@ class _RegisterExtraFoodScreenState extends State<RegisterExtraFoodScreen> {
           border: InputBorder.none,
         ),
       ),
+    );
+  }
+
+  InputDecoration _dropdownStyle() {
+    return InputDecoration(
+      filled: true,
+      fillColor: Colors.white,
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(
+          color: Color.fromARGB(255, 219, 218, 218),
+          width: 1,
+        ),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(
+          color: Color.fromARGB(255, 219, 218, 218),
+          width: 1,
+        ),
+      ),
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
     );
   }
 }
