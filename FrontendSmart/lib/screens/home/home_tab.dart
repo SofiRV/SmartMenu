@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 // ignore: unused_import
 import '../home/models/meal_item.dart';
 import '../home/controllers/home_controller.dart';
@@ -30,11 +31,21 @@ class HomeTab extends StatefulWidget {
 class _HomeTabState extends State<HomeTab> {
   late Future<void> dataFuture;
   String? username; // <-- variable para el nombre
+  int? _caloriesGoal;
 
   @override
   void initState() {
     super.initState();
     dataFuture = _getAllData();
+  }
+
+  Future<void> _loadCaloriesGoal() async {
+    final prefs = await SharedPreferences.getInstance();
+    final goal = prefs.getDouble('caloriesGoal');
+    if (!mounted) return;
+    setState(() {
+      _caloriesGoal = goal?.round();
+    });
   }
 
   Future<void> _getAllData() async {
@@ -46,6 +57,9 @@ class _HomeTabState extends State<HomeTab> {
 
     // Carga el nombre de usuario
     await _getUsername();
+
+    // Carga el objetivo de calorías desde SharedPreferences
+    await _loadCaloriesGoal();
 
     // HOY
     final mealsToday = await mealService.fetchMealsByDate(widget.accountId, format(now));
@@ -95,7 +109,7 @@ class _HomeTabState extends State<HomeTab> {
 
         // Calorías ejemplo (ajusta según tu lógica)
         const int caloriesConsumed = 720;
-        const int caloriesGoal = 2100;
+        final int caloriesGoal = _caloriesGoal ?? 2000;
 
         final yesterday = controller.yesterday;
         final tomorrow = controller.tomorrow;

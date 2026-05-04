@@ -129,6 +129,12 @@ class _PersonalDataScreenState extends State<PersonalDataScreen> {
     );
   }
 
+  Future<void> _saveCaloriesGoal(double? calories) async {
+    if (calories == null) return;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble('caloriesGoal', calories);
+  }
+
   void _validateAndSave() {
     _validate();
     _saveDraft();
@@ -205,6 +211,8 @@ class _PersonalDataScreenState extends State<PersonalDataScreen> {
       _bmi = double.parse(bmi.toStringAsFixed(1));
       _calories = double.parse(calories.toStringAsFixed(0));
     });
+
+    _saveCaloriesGoal(_calories);
   }
 
   double _activityFactor(String apiValue) {

@@ -62,11 +62,11 @@ class CaloriesCard extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(width: 6),
-                    const Padding(
-                      padding: EdgeInsets.only(bottom: 4),
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 4),
                       child: Text(
-                        "/ 2100 kcal",
-                        style: TextStyle(
+                        "/ $caloriesGoal kcal",
+                        style: const TextStyle(
                           fontSize: 13.5,
                           fontWeight: FontWeight.w400,
                           color: textGrey,
