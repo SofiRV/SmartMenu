@@ -106,6 +106,26 @@ class _RegisterExtraFoodScreenState extends State<RegisterExtraFoodScreen> {
     });
   }
 
+  int? _estimateKcalPer100g(int foodFamilyId) {
+    const map = {
+      1: 55, // Frutas
+      2: 30, // Verduras y Hortalizas
+      3: 200, // Carnes Rojas
+      4: 165, // Aves
+      5: 140, // Pescados
+      6: 100, // Mariscos
+      7: 120, // Lácteos
+      8: 120, // Legumbres
+      9: 350, // Cereales
+      10: 90, // Tubérculos
+      11: 600, // Frutos Secos
+      12: 880, // Aceites y Grasas
+      13: 450, // Dulces y Procesados
+    };
+
+    return map[foodFamilyId];
+  }
+
   void _clearItemInputs() {
     _nameCtrl.clear();
     _kcalCtrl.clear();
@@ -120,9 +140,9 @@ class _RegisterExtraFoodScreenState extends State<RegisterExtraFoodScreen> {
     final kcalStr = _kcalCtrl.text.trim();
     final gramsStr = _qtyCtrl.text.trim();
 
-    if (name.isEmpty || kcalStr.isEmpty) {
+    if (name.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Completa nombre y calorías.")),
+        const SnackBar(content: Text("Completa el nombre.")),
       );
       return;
     }
@@ -130,14 +150,6 @@ class _RegisterExtraFoodScreenState extends State<RegisterExtraFoodScreen> {
     if (_selectedFoodFamilyId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("Selecciona la familia de alimentos.")),
-      );
-      return;
-    }
-
-    final kcalInput = int.tryParse(kcalStr);
-    if (kcalInput == null || kcalInput <= 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Calorías inválidas.")),
       );
       return;
     }
@@ -153,6 +165,31 @@ class _RegisterExtraFoodScreenState extends State<RegisterExtraFoodScreen> {
       }
     }
 
+    int? kcalInput = int.tryParse(kcalStr);
+    bool usedEstimate = false;
+
+    if (_knowsGrams) {
+      if (kcalInput == null || kcalInput <= 0) {
+        final estimated = _estimateKcalPer100g(_selectedFoodFamilyId!);
+        if (estimated == null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+                content: Text("No hay kcal estimadas para esa familia.")),
+          );
+          return;
+        }
+        kcalInput = estimated;
+        usedEstimate = true;
+      }
+    } else {
+      if (kcalInput == null || kcalInput <= 0) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Calorías inválidas.")),
+        );
+        return;
+      }
+    }
+
     final item = _MealIngredient(
       name: name,
       kcalInput: kcalInput,
@@ -160,6 +197,7 @@ class _RegisterExtraFoodScreenState extends State<RegisterExtraFoodScreen> {
       knowsGrams: _knowsGrams,
       foodFamilyId: _selectedFoodFamilyId!,
       fromCatalog: _selectedCatalogItem != null,
+      usedEstimate: usedEstimate,
     );
 
     setState(() {
@@ -434,7 +472,7 @@ class _RegisterExtraFoodScreenState extends State<RegisterExtraFoodScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("Comida registrada ✅")),
       );
-      Navigator.pop(context);
+      Navigator.pop(context, true);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -763,7 +801,7 @@ class _RegisterExtraFoodScreenState extends State<RegisterExtraFoodScreen> {
                         Expanded(
                           child: _softInput(
                             controller: _kcalCtrl,
-                            hint: "Kcal por 100g",
+                            hint: "Kcal por 100g (opcional)",
                             keyboardType: TextInputType.number,
                           ),
                         ),
@@ -867,6 +905,17 @@ class _RegisterExtraFoodScreenState extends State<RegisterExtraFoodScreen> {
                                         color: Color(0xFF6B7280),
                                       ),
                                     ),
+                                    if (item.usedEstimate) ...[
+                                      const SizedBox(height: 4),
+                                      const Text(
+                                        "Estimado por familia",
+                                        style: TextStyle(
+                                          fontSize: 11.5,
+                                          color: Color(0xFF9AA3B2),
+                                          fontStyle: FontStyle.italic,
+                                        ),
+                                      ),
+                                    ],
                                   ],
                                 ),
                               ),
@@ -1041,6 +1090,7 @@ class _MealIngredient {
     required this.foodFamilyId,
     this.grams,
     this.fromCatalog = false,
+    this.usedEstimate = false,
   });
 
   final String name;
@@ -1049,11 +1099,12 @@ class _MealIngredient {
   final bool knowsGrams;
   final int foodFamilyId;
   final bool fromCatalog;
+  final bool usedEstimate;
 
   int get totalKcal {
     if (!knowsGrams || grams == null || grams! <= 0) return kcalInput;
     return ((kcalInput * grams!) / 100).round();
-    }
+  }
 
   String get displayName {
     if (grams == null || grams! <= 0) return name;

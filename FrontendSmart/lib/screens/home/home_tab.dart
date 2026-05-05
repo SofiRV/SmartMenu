@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-// ignore: unused_import
 import '../home/models/meal_item.dart';
 import '../home/controllers/home_controller.dart';
 import '../home/header.dart';
@@ -18,7 +17,8 @@ import '../home/shopping_list_card.dart';
 import '../../services/meal_service.dart';
 import './models/mini_meal.dart';
 import '../../services/api_config.dart';
-import '../../services/profile_service.dart'; // <-- agrega este import
+import '../../services/profile_service.dart';
+import '../../navigation/route_observer.dart';
 
 class HomeTab extends StatefulWidget {
   final int accountId;
@@ -28,15 +28,54 @@ class HomeTab extends StatefulWidget {
   State<HomeTab> createState() => _HomeTabState();
 }
 
-class _HomeTabState extends State<HomeTab> {
+class _HomeTabState extends State<HomeTab>
+    with WidgetsBindingObserver, RouteAware {
   late Future<void> dataFuture;
-  String? username; // <-- variable para el nombre
+  String? username;
   int? _caloriesGoal;
+
+  DateTime _lastRefresh = DateTime.now();
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     dataFuture = _getAllData();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final route = ModalRoute.of(context);
+    if (route != null) {
+      routeObserver.subscribe(this, route);
+    }
+  }
+
+  @override
+  void dispose() {
+    routeObserver.unsubscribe(this);
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didPopNext() {
+    setState(() {
+      dataFuture = _getAllData();
+    });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      final now = DateTime.now();
+      if (now.difference(_lastRefresh).inMinutes >= 1) {
+        setState(() {
+          dataFuture = _getAllData();
+        });
+      }
+    }
   }
 
   Future<void> _loadCaloriesGoal() async {
@@ -64,35 +103,35 @@ class _HomeTabState extends State<HomeTab> {
     final now = DateTime.now();
     String format(DateTime d) => DateFormat('dd-MM-yyyy').format(d);
 
-    // Carga el nombre de usuario
     await _getUsername();
-
-    // Carga el objetivo de calorías desde SharedPreferences
     await _loadCaloriesGoal();
 
-    // HOY
     final mealsToday = await mealService.fetchMealsByDate(widget.accountId, format(now));
     final eatenToday = mealsToday.where((m) => m.done).toList();
     final nextMeals = mealsToday.where((m) => !m.done).toList();
     controller.setTodayMeals(next: nextMeals, eaten: eatenToday);
 
-    // AYER
     final mealsYesterday = await mealService.fetchMealsByDate(widget.accountId, format(now.subtract(const Duration(days: 1))));
     controller.setYesterday(mealsYesterday.map(MiniMeal.fromMealItem).toList());
 
-    // MAÑANA
     final mealsTomorrow = await mealService.fetchMealsByDate(widget.accountId, format(now.add(const Duration(days: 1))));
     controller.setTomorrow(mealsTomorrow.map(MiniMeal.fromMealItem).toList());
+
+    _lastRefresh = DateTime.now();
   }
 
   Future<void> _getUsername() async {
     try {
       final service = ProfileService();
       final profiles = await service.getProfiles(accountId: widget.accountId);
+      if (!mounted) return;
       setState(() {
-        username = (profiles.isNotEmpty) ? (profiles.first['name'] ?? "Usuario") : "Usuario";
+        username = (profiles.isNotEmpty)
+            ? (profiles.first['name'] ?? "Usuario")
+            : "Usuario";
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         username = "Usuario";
       });
@@ -123,141 +162,150 @@ class _HomeTabState extends State<HomeTab> {
         final tomorrow = controller.tomorrow;
         final nextMeal = controller.nextMeals.isNotEmpty ? controller.nextMeals.first : null;
 
-        return SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Header(username: nameToShow, avatarEmoji: avatarEmoji),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    CaloriesCard(
-                      caloriesConsumed: caloriesConsumed,
-                      caloriesGoal: caloriesGoal,
-                    ),
-                    const RegisterExtraFoodButton(),
-                    const SizedBox(height: 14),
-                    const Text(
-                      "Resumen rápido",
-                      style: TextStyle(
-                        fontSize: 15.5,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF1A1A1A),
+        return RefreshIndicator(
+          onRefresh: () async {
+            setState(() {
+              dataFuture = _getAllData();
+            });
+            await dataFuture;
+          },
+          child: SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Header(username: nameToShow, avatarEmoji: avatarEmoji),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      CaloriesCard(
+                        caloriesConsumed: caloriesConsumed,
+                        caloriesGoal: caloriesGoal,
                       ),
-                    ),
-                    const SizedBox(height: 10),
-                    QuickSummaryCarousel(
-                      title: "Ayer",
-                      items: yesterday,
-                    ),
-                    const SizedBox(height: 10),
-                    QuickSummaryCarousel(
-                      title: "Mañana",
-                      items: tomorrow,
-                    ),
-                    const SizedBox(height: 18),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text(
-                          "Tu próxima comida",
-                          style: TextStyle(
-                            fontSize: 15.5,
-                            fontWeight: FontWeight.w600,
-                            color: Color(0xFF1A1A1A),
-                          ),
+                      const RegisterExtraFoodButton(),
+                      const SizedBox(height: 14),
+                      const Text(
+                        "Resumen rápido",
+                        style: TextStyle(
+                          fontSize: 15.5,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF1A1A1A),
                         ),
-                        InkWell(
-                          borderRadius: BorderRadius.circular(8),
-                          onTap: () {},
-                          child: const Text(
-                            "Ver plan completo",
+                      ),
+                      const SizedBox(height: 10),
+                      QuickSummaryCarousel(
+                        title: "Ayer",
+                        items: yesterday,
+                      ),
+                      const SizedBox(height: 10),
+                      QuickSummaryCarousel(
+                        title: "Mañana",
+                        items: tomorrow,
+                      ),
+                      const SizedBox(height: 18),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text(
+                            "Tu próxima comida",
                             style: TextStyle(
-                              fontSize: 13.5,
-                              fontWeight: FontWeight.w500,
-                              color: Color.fromARGB(255, 11, 153, 101),
+                              fontSize: 15.5,
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xFF1A1A1A),
                             ),
                           ),
+                          InkWell(
+                            borderRadius: BorderRadius.circular(8),
+                            onTap: () {},
+                            child: const Text(
+                              "Ver plan completo",
+                              style: TextStyle(
+                                fontSize: 13.5,
+                                fontWeight: FontWeight.w500,
+                                color: Color.fromARGB(255, 11, 153, 101),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      if (nextMeal != null)
+                        NextMealCard(
+                          emoji: nextMeal.icon,
+                          tag: nextMeal.tag,
+                          time: nextMeal.time,
+                          title: nextMeal.title,
+                          kcal: nextMeal.kcal,
+                        )
+                      else
+                        const Text(
+                          "No hay próximas comidas registradas.",
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: Color(0xFF5A5565),
+                          ),
                         ),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    if (nextMeal != null)
-                      NextMealCard(
-                        emoji: nextMeal.icon,
-                        tag: nextMeal.tag,
-                        time: nextMeal.time,
-                        title: nextMeal.title,
-                        kcal: nextMeal.kcal,
-                      )
-                    else
+                      const SizedBox(height: 18),
                       const Text(
-                        "No hay próximas comidas registradas.",
+                        "Siguientes comidas de hoy",
                         style: TextStyle(
-                          fontSize: 13,
+                          fontSize: 15.5,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF1A1A1A),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      MealsReorderableList(
+                        meals: controller.nextMeals,
+                        onReorder: controller.reorderMeal,
+                        onDelete: controller.deleteMeal,
+                        onToggleDone: controller.toggleMealDone,
+                        onTap: (index) {},
+                      ),
+                      const SizedBox(height: 18),
+                      const Text(
+                        "¿Buscas inspiración?",
+                        style: TextStyle(
+                          fontSize: 14.5,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF1A1A1A),
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      const Text(
+                        "Descubre nuevas recetas para añadir a tu plan",
+                        style: TextStyle(
+                          fontSize: 12.8,
+                          fontWeight: FontWeight.w400,
                           color: Color(0xFF5A5565),
                         ),
                       ),
-                    const SizedBox(height: 18),
-                    const Text(
-                      "Siguientes comidas de hoy",
-                      style: TextStyle(
-                        fontSize: 15.5,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF1A1A1A),
+                      const SizedBox(height: 10),
+                      const InspirationCard(),
+                      const SearchRecipesCard(),
+                      const SizedBox(height: 18),
+                      const Text(
+                        "Lo que has comido hoy",
+                        style: TextStyle(
+                          fontSize: 15.5,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF1A1A1A),
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 10),
-                    MealsReorderableList(
-                      meals: controller.nextMeals,
-                      onReorder: controller.reorderMeal,
-                      onDelete: controller.deleteMeal,
-                      onToggleDone: controller.toggleMealDone,
-                      onTap: (index) {},
-                    ),
-                    const SizedBox(height: 18),
-                    const Text(
-                      "¿Buscas inspiración?",
-                      style: TextStyle(
-                        fontSize: 14.5,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF1A1A1A),
+                      const SizedBox(height: 10),
+                      EatenTodayList(
+                        eatenMeals: controller.eatenToday,
                       ),
-                    ),
-                    const SizedBox(height: 4),
-                    const Text(
-                      "Descubre nuevas recetas para añadir a tu plan",
-                      style: TextStyle(
-                        fontSize: 12.8,
-                        fontWeight: FontWeight.w400,
-                        color: Color(0xFF5A5565),
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    const InspirationCard(),
-                    const SearchRecipesCard(),
-                    const SizedBox(height: 18),
-                    const Text(
-                      "Lo que has comido hoy",
-                      style: TextStyle(
-                        fontSize: 15.5,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF1A1A1A),
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    EatenTodayList(
-                      eatenMeals: controller.eatenToday,
-                    ),
-                    const SizedBox(height: 4),
-                    const ShoppingListCard(),
-                    const SizedBox(height: 24),
-                  ],
+                      const SizedBox(height: 4),
+                      const ShoppingListCard(),
+                      const SizedBox(height: 24),
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         );
       },

@@ -1,8 +1,13 @@
 import 'package:flutter/material.dart';
-import '../register_extra_food_screen.dart'; // Asegúrate de ajustar el import según tu estructura
+import '../register_extra_food_screen.dart';
 
 class RegisterExtraFoodButton extends StatelessWidget {
-  const RegisterExtraFoodButton({super.key});
+  const RegisterExtraFoodButton({
+    super.key,
+    this.onSaved,
+  });
+
+  final Future<void> Function()? onSaved;
 
   @override
   Widget build(BuildContext context) {
@@ -11,13 +16,17 @@ class RegisterExtraFoodButton extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(top: 10.0, bottom: 12.0),
       child: InkWell(
-        onTap: () {
-          Navigator.push(
+        onTap: () async {
+          final didSave = await Navigator.push(
             context,
             MaterialPageRoute(
               builder: (_) => const RegisterExtraFoodScreen(),
             ),
           );
+
+          if (didSave == true && onSaved != null) {
+            await onSaved!();
+          }
         },
         borderRadius: BorderRadius.circular(18),
         child: Container(

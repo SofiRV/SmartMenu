@@ -17,8 +17,11 @@ import 'screens/saved_recipes_screen.dart';
 import 'screens/post_login_router_screen.dart';
 import 'screens/individual_home_screen.dart';
 
-// Importa tu HomeController (ajusta si te cambió la ubicación)
+// Controllers
 import 'screens/home/controllers/home_controller.dart';
+
+// Route observer
+import 'navigation/route_observer.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -26,14 +29,12 @@ void main() async {
   final prefs = await SharedPreferences.getInstance();
   final isDark = prefs.getBool('darkMode') ?? false;
 
-  themeModeNotifier.value =
-      isDark ? ThemeMode.dark : ThemeMode.light;
+  themeModeNotifier.value = isDark ? ThemeMode.dark : ThemeMode.light;
 
   runApp(
     MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => HomeController()),
-        // ... Puedes agregar más providers aquí si los necesitas.
       ],
       child: const SmartMenuApp(),
     ),
@@ -51,8 +52,8 @@ class SmartMenuApp extends StatelessWidget {
         return MaterialApp(
           debugShowCheckedModeBanner: false,
           title: 'SmartMenu',
+          navigatorObservers: [routeObserver],
 
-          // 🌿 Tema base
           theme: ThemeData(
             colorSchemeSeed: Colors.green,
             brightness: Brightness.light,
@@ -77,19 +78,19 @@ class SmartMenuApp extends StatelessWidget {
             '/login': (context) => const LoginScreen(),
             '/new_password': (context) =>
                 const NewPasswordScreen(token: 'test_token'),
-            '/recover_password': (context) =>
-                RecoverPasswordScreen(),
+            '/recover_password': (context) => RecoverPasswordScreen(),
             '/preferences': (context) => const PreferencesScreen(),
             '/home': (context) => FutureBuilder<int?>(
-            future: SharedPreferences.getInstance().then((prefs) => prefs.getInt('accountId')),
-              builder: (context, snapshot) {
-                if (!snapshot.hasData) {
-                  return const CircularProgressIndicator(); // o una pantalla de loading
-                }
-                final accountId = snapshot.data ?? 1; // fallback a 1 si no existe
-                return IndividualHomeScreen(accountId: accountId);
-              },
-            ),
+                  future: SharedPreferences.getInstance()
+                      .then((prefs) => prefs.getInt('accountId')),
+                  builder: (context, snapshot) {
+                    if (!snapshot.hasData) {
+                      return const CircularProgressIndicator();
+                    }
+                    final accountId = snapshot.data ?? 1;
+                    return IndividualHomeScreen(accountId: accountId);
+                  },
+                ),
             '/saved_recipes': (context) => const SavedRecipesScreen(),
             '/post_login': (context) => const PostLoginRouterScreen(),
           },
