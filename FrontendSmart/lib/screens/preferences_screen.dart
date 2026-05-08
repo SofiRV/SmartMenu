@@ -233,7 +233,6 @@ class _PreferencesScreenState extends State<PreferencesScreen> {
     if (q.length < 2) return [];
 
     // filtro simple (O(n)). Con cientos/miles va ok.
-    // Si fueran decenas de miles, hacemos prefix-index o trie.
     final results = _genericIngredientsIndex.where((it) {
       return it.name.toLowerCase().contains(q);
     }).take(10).toList();
@@ -320,6 +319,10 @@ class _PreferencesScreenState extends State<PreferencesScreen> {
         profileName: _profileName,
       );
 
+      // Leer las calorías recomendadas guardadas localmente
+      final prefs = await SharedPreferences.getInstance();
+      final double? caloriesGoal = prefs.getDouble('caloriesGoal');
+
       final payload = <String, dynamic>{
         "profile_id": profileId,
         "diet_type_id": _selectedDietTypeId!,
@@ -331,6 +334,8 @@ class _PreferencesScreenState extends State<PreferencesScreen> {
         "hips_measure": _parseDoubleStrict(_hips),
         "sex": _sexApi,
         "activity_level": _activityLevelApi,
+        // NUEVO: enviar las calorías recomendadas calculadas en PersonalDataScreen
+        "recommended_kcal": caloriesGoal?.round(),
       };
 
       await _settingsService.setProfileSettings(
@@ -739,7 +744,7 @@ class _PreferencesScreenState extends State<PreferencesScreen> {
     );
   }
 
-  // Diets/Goals UI simplificada (puedes usar tu versión anterior si quieres)
+  // Diets/Goals UI simplificada
   Widget _dietGridFromApi() {
     if (_dietTypes.isEmpty) return _errorBox("No hay diet-types (BD vacía).");
 
