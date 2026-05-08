@@ -55,8 +55,13 @@ class GenericIngredientItem {
   final int id;
   final String name;
   final int? foodFamilyId;
+  final int? kcal; 
 
-  GenericIngredientItem({required this.id, required this.name, this.foodFamilyId});
+  GenericIngredientItem(
+    {required this.id, 
+    required this.name, 
+    this.foodFamilyId,
+    this.kcal});
 
   factory GenericIngredientItem.fromJson(Map<String, dynamic> json) {
     final rawId = json['id'];
@@ -74,10 +79,17 @@ class GenericIngredientItem {
       if (x != null) ffId = x is int ? x : (x as num).toInt();
     }
 
+    int? kcal;
+    final rawKcal = json['kcal'];
+    if (rawKcal is num) {
+      kcal = rawKcal.toInt();
+    }
+
     return GenericIngredientItem(
       id: id,
       name: (json['name'] ?? json['self_name'] ?? '').toString(),
       foodFamilyId: ffId,
+      kcal: kcal,
     );
   }
 }
