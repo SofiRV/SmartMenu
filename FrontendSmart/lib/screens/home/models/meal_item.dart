@@ -6,6 +6,7 @@ class MealItem {
   final String time;
   final String kcal;
   final bool done;
+  final int? foodId;   // ← nuevo
 
   MealItem({
     required this.id,
@@ -15,6 +16,7 @@ class MealItem {
     required this.time,
     required this.kcal,
     this.done = false,
+    this.foodId,
   });
 
   MealItem copyWith({
@@ -25,6 +27,7 @@ class MealItem {
     String? time,
     String? kcal,
     bool? done,
+    int? foodId,
   }) {
     return MealItem(
       id: id ?? this.id,
@@ -34,27 +37,21 @@ class MealItem {
       time: time ?? this.time,
       kcal: kcal ?? this.kcal,
       done: done ?? this.done,
+      foodId: foodId ?? this.foodId,
     );
   }
 
   static String _mapMoment(String raw) {
     switch (raw) {
-      case "breakfast":
-        return "Desayuno";
-      case "mid_morning_snack":
-        return "Snack";
-      case "lunch":
-        return "Comida";
-      case "afternoon_snack":
-        return "Merienda";
-      case "dinner":
-        return "Cena";
-      default:
-        return raw;
+      case "breakfast": return "Desayuno";
+      case "mid_morning_snack": return "Snack";
+      case "lunch": return "Comida";
+      case "afternoon_snack": return "Merienda";
+      case "dinner": return "Cena";
+      default: return raw;
     }
   }
 
-  // Construir desde el backend
   factory MealItem.fromBackend(Map<String, dynamic> json) {
     final foods = (json['foods'] as List?) ?? [];
     final mainFood = foods.isNotEmpty ? foods.first : null;
@@ -83,6 +80,10 @@ class MealItem {
     final String kcal = mealKcal?.toString() ?? "--";
     final String moment = json['eatingMoment'] ?? "";
 
+    final int? firstFoodId = (mainFood != null && mainFood['foodId'] != null)
+        ? (mainFood['foodId'] is int ? mainFood['foodId'] : int.tryParse(mainFood['foodId'].toString()))
+        : null;
+
     return MealItem(
       id: json['id'].toString(),
       icon: icon,
@@ -91,6 +92,7 @@ class MealItem {
       time: time,
       kcal: kcal,
       done: json['eaten'] ?? false,
+      foodId: firstFoodId,
     );
   }
 }

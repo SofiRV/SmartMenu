@@ -5,14 +5,15 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart';
 
-import 'scan_code_screen.dart';
 import '../services/api_config.dart';
 import '../services/catalog_service.dart';
 import '../services/profile_service.dart';
 
 class RegisterExtraFoodScreen extends StatefulWidget {
-  const RegisterExtraFoodScreen({super.key});
+  final DateTime? initialDate;   // ← nuevo
+  const RegisterExtraFoodScreen({super.key, this.initialDate});
 
   @override
   State<RegisterExtraFoodScreen> createState() =>
@@ -37,6 +38,7 @@ class _RegisterExtraFoodScreenState extends State<RegisterExtraFoodScreen> {
   final TextEditingController _searchCtrl = TextEditingController();
 
   TimeOfDay? _selectedTime;
+  late DateTime _referenceDate;   // ← guarda la fecha base
 
   // Catalog
   bool _loadingCatalog = true;
@@ -56,6 +58,7 @@ class _RegisterExtraFoodScreenState extends State<RegisterExtraFoodScreen> {
   @override
   void initState() {
     super.initState();
+    _referenceDate = widget.initialDate ?? DateTime.now();   // ← inicializar
     _loadCatalog();
     _searchCtrl.addListener(_filterCatalog);
   }
@@ -241,28 +244,65 @@ class _RegisterExtraFoodScreenState extends State<RegisterExtraFoodScreen> {
       imageQuality: 85,
     );
 
-    if (!mounted) return;
+    if (!mounted || file == null) return;
 
-    if (file == null) return;
+    setState(() { /* opcional: loading = true */ });
 
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text("Foto tomada: ${file.name}")));
+    try {
+      final uri = Uri.parse(ApiConfig.url("/specific-ingredient/ai-detect"));
+      final request = http.MultipartRequest('POST', uri);
+      request.files.add(await http.MultipartFile.fromPath(
+        'file',
+        file.path,
+        contentType: MediaType('image', 'jpeg'),
+      ));
+      final streamedResponse = await request.send();
+      final response = await http.Response.fromStream(streamedResponse);
+
+      if (response.statusCode == 200) {
+        final decoded = jsonDecode(response.body);
+        final List<dynamic> ingredients = decoded['ingredients'] ?? [];
+        final List<String> detectedNames = ingredients
+            .whereType<String>()
+            .map((s) => s.trim())
+            .where((s) => s.isNotEmpty)
+            .toList();
+
+        for (final name in detectedNames) {
+          _mealItems.add(_MealIngredient(
+            name: name,
+            kcalInput: 0,
+            grams: 0,
+            knowsGrams: false,
+            foodFamilyId: 2,
+            fromCatalog: false,
+            usedEstimate: false,
+          ));
+        }
+
+        setState(() {});
+
+        if (detectedNames.isNotEmpty) {
+          _showSnackBar("Se detectaron ${detectedNames.length} ingredientes. Revisa y ajusta kcal/familia.");
+        } else {
+          _showSnackBar("No se detectaron ingredientes en la imagen.");
+        }
+      } else if (response.statusCode == 503) {
+        _showSnackBar("El servicio de IA está saturado. Inténtalo de nuevo en unos momentos.");
+      } else {
+        _showSnackBar("Error al procesar la imagen (${response.statusCode})");
+      }
+    } catch (e) {
+      _showSnackBar("Error de conexión: $e");
+    } finally {
+      if (mounted) {
+        // setState(() { loading = false });
+      }
+    }
   }
 
-  // ===================== CAMARA ESCANEO =====================
-  Future<void> _openScanCamera() async {
-    final result = await Navigator.push<String?>(
-      context,
-      MaterialPageRoute(builder: (_) => const ScanCodeScreen()),
-    );
-
-    if (!mounted) return;
-    if (result == null) return;
-
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text("Código detectado: $result")));
+  void _showSnackBar(String msg) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
   // ===================== PICKER HORA estilo iOS =====================
@@ -439,11 +479,11 @@ class _RegisterExtraFoodScreenState extends State<RegisterExtraFoodScreen> {
         }
       }
 
-      final now = DateTime.now();
+      // Combinar fecha de referencia con la hora seleccionada
       final mealTime = DateTime(
-        now.year,
-        now.month,
-        now.day,
+        _referenceDate.year,
+        _referenceDate.month,
+        _referenceDate.day,
         _selectedTime!.hour,
         _selectedTime!.minute,
       );
@@ -577,13 +617,6 @@ class _RegisterExtraFoodScreenState extends State<RegisterExtraFoodScreen> {
 
                   Row(
                     children: [
-                      _actionButton(
-                        text: "Escanear\ncódigo",
-                        icon: Icons.qr_code_rounded,
-                        color: const Color(0xFF8B5CF6),
-                        onTap: _openScanCamera,
-                      ),
-                      const SizedBox(width: 12),
                       _actionButton(
                         text: "Foto de\ncomida",
                         icon: Icons.camera_alt_rounded,
@@ -773,12 +806,8 @@ class _RegisterExtraFoodScreenState extends State<RegisterExtraFoodScreen> {
                           onChanged: (v) {
                             setState(() {
                               _knowsGrams = v;
-                              _nameCtrl.clear();
                               _kcalCtrl.clear();
                               _qtyCtrl.clear();
-                              _selectedFoodFamilyId = null;
-                              _selectedCatalogItem = null;
-                              _editingIndex = null;
                             });
                           },
                         ),

@@ -253,7 +253,6 @@ class _CreateRecipeScreenState extends State<CreateRecipeScreen> {
                   "step_number": s.stepNumber,
                   "instruction": s.instruction.trim(),
                   "estimated_time": s.estimatedTime,
-                  "kcal": null,   // por si el backend lo requiere explícito
                 })
             .toList(),
       });

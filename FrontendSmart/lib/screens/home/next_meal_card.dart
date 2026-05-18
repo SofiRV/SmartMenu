@@ -1,5 +1,8 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
-import '../details_recipe_screen.dart'; // Ajusta ruta si está en otro lado
+import 'package:http/http.dart' as http;
+import '../../services/api_config.dart';
+import '../details_recipe_screen.dart';
 
 class NextMealCard extends StatelessWidget {
   final String emoji;
@@ -7,6 +10,7 @@ class NextMealCard extends StatelessWidget {
   final String time;
   final String title;
   final String kcal;
+  final int? foodId;
   final VoidCallback? onTapDetails;
 
   const NextMealCard({
@@ -16,23 +20,45 @@ class NextMealCard extends StatelessWidget {
     required this.time,
     required this.title,
     required this.kcal,
+    this.foodId,
     this.onTapDetails,
   });
+
+  Future<void> _openFoodDetail(BuildContext context, int foodId) async {
+    try {
+      final uri = Uri.parse(ApiConfig.url("/food/$foodId"));
+      final response = await http.get(uri);
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> data = jsonDecode(response.body);
+        if (!context.mounted) return;
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => DetailsRecipeScreen(recipeData: data),
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Error al cargar detalle (${response.statusCode})")),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Error: $e")),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     const Color textGrey = Color(0xFF5A5565);
 
     return InkWell(
-      onTap: onTapDetails ??
-          () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => const DetailsRecipeScreen(),
-              ),
-            );
-          },
+      onTap: onTapDetails ?? () {
+        if (foodId != null) {
+          _openFoodDetail(context, foodId!);
+        }
+      },
       borderRadius: BorderRadius.circular(18),
       child: Container(
         width: double.infinity,
@@ -86,19 +112,11 @@ class NextMealCard extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(width: 10),
-                      const Icon(
-                        Icons.access_time,
-                        size: 16,
-                        color: textGrey,
-                      ),
+                      const Icon(Icons.access_time, size: 16, color: textGrey),
                       const SizedBox(width: 6),
                       Text(
                         time,
-                        style: const TextStyle(
-                          fontSize: 12.5,
-                          fontWeight: FontWeight.w400,
-                          color: textGrey,
-                        ),
+                        style: const TextStyle(fontSize: 12.5, color: textGrey),
                       ),
                     ],
                   ),
@@ -114,30 +132,20 @@ class NextMealCard extends StatelessWidget {
                   const SizedBox(height: 6),
                   Row(
                     children: [
-                      const Icon(
-                        Icons.local_fire_department_rounded,
-                        size: 16,
-                        color: Color(0xFFFF8A00),
-                      ),
+                      const Icon(Icons.local_fire_department_rounded,
+                          size: 16, color: Color(0xFFFF8A00)),
                       const SizedBox(width: 6),
                       Text(
                         "$kcal kcal",
-                        style: const TextStyle(
-                          fontSize: 12.8,
-                          fontWeight: FontWeight.w400,
-                          color: textGrey,
-                        ),
+                        style: const TextStyle(fontSize: 12.8, color: textGrey),
                       ),
                     ],
                   ),
                 ],
               ),
             ),
-            const Icon(
-              Icons.chevron_right_rounded,
-              color: Color(0xFF2F73FF),
-              size: 30,
-            ),
+            const Icon(Icons.chevron_right_rounded,
+                color: Color(0xFF2F73FF), size: 30),
           ],
         ),
       ),

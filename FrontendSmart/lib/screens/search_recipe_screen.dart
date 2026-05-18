@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:http_parser/http_parser.dart';
+import 'package:intl/intl.dart';
 
 import '../services/api_config.dart';
 import '../services/catalog_service.dart';
@@ -17,7 +19,9 @@ const Color chipGreenBorder = Color(0xFFBDEBDA);
 const Color cardShadow = Color.fromARGB(22, 0, 0, 0);
 
 class SearchRecipeScreen extends StatefulWidget {
-  const SearchRecipeScreen({super.key});
+  final List<String>? initialIngredients;
+  final DateTime? planDate;
+  const SearchRecipeScreen({super.key, this.initialIngredients, this.planDate});
 
   @override
   State<SearchRecipeScreen> createState() => _SearchRecipeScreenState();
@@ -26,36 +30,30 @@ class SearchRecipeScreen extends StatefulWidget {
 class _SearchRecipeScreenState extends State<SearchRecipeScreen> {
   final ImagePicker _picker = ImagePicker();
 
-  // ---------- Catálogos ----------
   List<GenericIngredientItem> _allGenericIngredients = [];
   List<FoodFamilyItem> _foodFamilies = [];
   bool _loadingCatalogs = true;
 
-  // ---------- Buscador de genéricos ----------
   final TextEditingController _genericSearchCtrl = TextEditingController();
   List<GenericIngredientItem> _genericSearchResults = [];
 
-  // ---------- Buscador de específicos ----------
   final TextEditingController _specificSearchCtrl = TextEditingController();
   List<Map<String, dynamic>> _allSpecificIngredients = [];
   List<Map<String, dynamic>> _specificSearchResults = [];
   bool _loadingSpecific = false;
 
-  // ---------- Seleccionados ----------
   final Set<int> _selectedGenericIngredientIds = {};
   final Set<int> _selectedSpecificIngredientIds = {};
   final List<_SpecificIngredient> _selectedSpecificIngredients = [];
 
-  // Ingredientes extra (IA)
   final List<String> _extraIngredientNames = [];
 
-  // Receta generada
   Map<String, dynamic>? _generatedRecipe;
   bool _isGenerating = false;
   bool _isSavingRecipe = false;
   bool _isAddingMeal = false;
+  bool _isAddingToPlan = false;
 
-  // Filtros
   String selectedFilter = "Rápidas";
   final List<String> filters = const [
     "Rápidas",
@@ -71,6 +69,11 @@ class _SearchRecipeScreenState extends State<SearchRecipeScreen> {
     _specificSearchCtrl.addListener(_onSpecificSearchChanged);
     _loadCatalogs();
     _loadSpecificIngredients();
+
+    if (widget.initialIngredients != null &&
+        widget.initialIngredients!.isNotEmpty) {
+      _extraIngredientNames.addAll(widget.initialIngredients!);
+    }
   }
 
   @override
@@ -100,7 +103,6 @@ class _SearchRecipeScreenState extends State<SearchRecipeScreen> {
     }
   }
 
-  // ===================== Búsqueda genéricos =====================
   void _onGenericSearchChanged() {
     final query = _genericSearchCtrl.text.trim().toLowerCase();
     setState(() {
@@ -126,7 +128,6 @@ class _SearchRecipeScreenState extends State<SearchRecipeScreen> {
     setState(() => _selectedGenericIngredientIds.remove(id));
   }
 
-  // ===================== Búsqueda específicos =====================
   Future<void> _loadSpecificIngredients() async {
     final prefs = await SharedPreferences.getInstance();
     final accountId = prefs.getInt('accountId');
@@ -194,7 +195,6 @@ class _SearchRecipeScreenState extends State<SearchRecipeScreen> {
     });
   }
 
-  // ===================== Crear ingrediente específico =====================
   Future<void> _showAddCustomIngredientDialog() async {
     final nameCtrl = TextEditingController();
     int? selectedFamilyId;
@@ -332,7 +332,6 @@ class _SearchRecipeScreenState extends State<SearchRecipeScreen> {
     }
   }
 
-  // ===================== IA =====================
   Future<void> _scanAndDetect() async {
     final XFile? photo = await _picker.pickImage(
       source: ImageSource.camera,
@@ -342,7 +341,11 @@ class _SearchRecipeScreenState extends State<SearchRecipeScreen> {
 
     final uri = Uri.parse(ApiConfig.url("/specific-ingredient/ai-detect"));
     final request = http.MultipartRequest('POST', uri);
-    request.files.add(await http.MultipartFile.fromPath('file', photo.path));
+    request.files.add(await http.MultipartFile.fromPath(
+      'file',
+      photo.path,
+      contentType: MediaType('image', 'jpeg'),
+    ));
 
     try {
       final streamedResponse = await request.send();
@@ -417,7 +420,6 @@ class _SearchRecipeScreenState extends State<SearchRecipeScreen> {
     }
   }
 
-  // ===================== Guardar y añadir a comidas =====================
   Future<Map<String, int>?> _createSpecificRecipeFromGenerated() async {
     if (_generatedRecipe == null) return null;
     final prefs = await SharedPreferences.getInstance();
@@ -455,7 +457,6 @@ class _SearchRecipeScreenState extends State<SearchRecipeScreen> {
           ? decoded['foodId']
           : int.parse(decoded['foodId'].toString());
 
-      // Asociar ingredientes seleccionados
       if (_selectedGenericIngredientIds.isNotEmpty ||
           _selectedSpecificIngredientIds.isNotEmpty) {
         final ingredientsUri =
@@ -471,11 +472,11 @@ class _SearchRecipeScreenState extends State<SearchRecipeScreen> {
               },
             }));
         if (ingRes.statusCode < 200 || ingRes.statusCode >= 300) {
-          debugPrint("Aviso: no se pudieron asociar ingredientes: ${ingRes.body}");
+          debugPrint(
+              "Aviso: no se pudieron asociar ingredientes: ${ingRes.body}");
         }
       }
 
-      // Asociar pasos
       if (steps.isNotEmpty) {
         final stepsUri =
             Uri.parse(ApiConfig.url("/specific-recipe/$recipeId/steps"));
@@ -493,7 +494,6 @@ class _SearchRecipeScreenState extends State<SearchRecipeScreen> {
               "estimated_time": estTime is int
                   ? estTime
                   : int.tryParse(estTime.toString()) ?? 0,
-              "kcal": null,   // por si el backend lo requiere explícito
             };
           }).toList(),
         });
@@ -514,7 +514,6 @@ class _SearchRecipeScreenState extends State<SearchRecipeScreen> {
             }
           }
           debugPrint(errorMsg);
-          // No lanzamos excepción para no bloquear el flujo
         }
       }
 
@@ -594,20 +593,69 @@ class _SearchRecipeScreenState extends State<SearchRecipeScreen> {
     }
   }
 
+  Future<void> _addRecipeToPlan() async {
+    if (widget.planDate == null) return;
+    setState(() => _isAddingToPlan = true);
+    try {
+      final result = await _createSpecificRecipeFromGenerated();
+      if (result == null) {
+        setState(() => _isAddingToPlan = false);
+        return;
+      }
+      final foodId = result['foodId']!;
+
+      final prefs = await SharedPreferences.getInstance();
+      final accountId = prefs.getInt('accountId');
+      if (accountId == null) {
+        _showError("No accountId");
+        return;
+      }
+      final profileId = prefs.getInt('profileId');
+      if (profileId == null) {
+        _showError("No profileId. Complete su perfil primero.");
+        return;
+      }
+
+      final planDate = widget.planDate!;
+      final mealDateTime = DateTime(
+          planDate.year, planDate.month, planDate.day, 12, 0);
+
+      final mealUri = Uri.parse(ApiConfig.url("/meal/"));
+      final mealRes = await http.post(mealUri,
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({
+            "account_id": accountId,
+            "profilIds": [profileId],
+            "foodIds": [foodId],
+            "eating_moment": "lunch",
+            "eaten": false,
+            "datetime": mealDateTime.toIso8601String(),
+          }));
+      if (mealRes.statusCode >= 200 && mealRes.statusCode < 300) {
+        _showError("Añadido al plan del ${DateFormat('dd/MM').format(planDate)} ✅");
+        if (mounted) Navigator.pop(context, true);
+      } else {
+        _showError("Error al añadir al plan: ${mealRes.body}");
+      }
+    } catch (e) {
+      _showError("Error: $e");
+    } finally {
+      if (mounted) setState(() => _isAddingToPlan = false);
+    }
+  }
+
   void _showError(String msg) {
     if (!mounted) return;
     ScaffoldMessenger.of(context)
         .showSnackBar(SnackBar(content: Text(msg)));
   }
 
-  // ===================== UI =====================
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: screenBg,
       body: Column(
         children: [
-          // Header verde
           Container(
             width: double.infinity,
             padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
@@ -665,7 +713,6 @@ class _SearchRecipeScreenState extends State<SearchRecipeScreen> {
                   _addCustomRecipeCard(),
                   const SizedBox(height: 18),
 
-                  // 🔍 Buscador de genéricos
                   const Text("Ingredientes genéricos",
                       style: TextStyle(
                           fontSize: 14.5,
@@ -686,7 +733,6 @@ class _SearchRecipeScreenState extends State<SearchRecipeScreen> {
                     ),
                   const SizedBox(height: 10),
 
-                  // 🔍 Buscador de específicos
                   const Text("Tus ingredientes personalizados",
                       style: TextStyle(
                           fontSize: 14.5,
@@ -733,7 +779,6 @@ class _SearchRecipeScreenState extends State<SearchRecipeScreen> {
                       ),
                     ),
                   const SizedBox(height: 12),
-                  // Chips de ingredientes seleccionados
                   if (_selectedGenericIngredientIds.isNotEmpty)
                     _buildChipSection(
                         "Genéricos seleccionados",
@@ -767,7 +812,6 @@ class _SearchRecipeScreenState extends State<SearchRecipeScreen> {
                         }).toList()),
 
                   const SizedBox(height: 18),
-                  // Filtros (estáticos)
                   Wrap(
                     spacing: 12,
                     runSpacing: 12,
@@ -782,7 +826,6 @@ class _SearchRecipeScreenState extends State<SearchRecipeScreen> {
                         .toList(),
                   ),
                   const SizedBox(height: 18),
-                  // Botón Buscar recetas
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton.icon(
@@ -817,59 +860,86 @@ class _SearchRecipeScreenState extends State<SearchRecipeScreen> {
                     const SizedBox(height: 10),
                     _buildGeneratedRecipeCard(_generatedRecipe!),
                     const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: ElevatedButton.icon(
-                            onPressed: _isSavingRecipe
-                                ? null
-                                : _saveRecipeToSpecific,
-                            icon: _isSavingRecipe
-                                ? const SizedBox(
-                                    height: 18,
-                                    width: 18,
-                                    child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                        color: Colors.white))
-                                : const Icon(Icons.save),
-                            label: const Text("Guardar receta"),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: primaryGreen,
-                              padding: const EdgeInsets.symmetric(
-                                  vertical: 12),
-                              shape: RoundedRectangleBorder(
-                                  borderRadius:
-                                      BorderRadius.circular(14)),
-                            ),
+                    if (widget.planDate != null)
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton.icon(
+                          onPressed: _isAddingToPlan
+                              ? null
+                              : _addRecipeToPlan,
+                          icon: _isAddingToPlan
+                              ? const SizedBox(
+                                  height: 18,
+                                  width: 18,
+                                  child: CircularProgressIndicator(
+                                      strokeWidth: 2, color: Colors.white))
+                              : const Icon(Icons.calendar_today),
+                          label: Text(_isAddingToPlan
+                              ? "Añadiendo..."
+                              : "Añadir al plan (${DateFormat('dd/MM').format(widget.planDate!)})"),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: primaryGreen,
+                            padding:
+                                const EdgeInsets.symmetric(vertical: 12),
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14)),
                           ),
                         ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: ElevatedButton.icon(
-                            onPressed: _isAddingMeal
-                                ? null
-                                : _addRecipeToTodayMeals,
-                            icon: _isAddingMeal
-                                ? const SizedBox(
-                                    height: 18,
-                                    width: 18,
-                                    child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                        color: Colors.white))
-                                : const Icon(Icons.add_circle),
-                            label: const Text("Añadir a hoy"),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Color(0xFFFF8A00),
-                              padding: const EdgeInsets.symmetric(
-                                  vertical: 12),
-                              shape: RoundedRectangleBorder(
-                                  borderRadius:
-                                      BorderRadius.circular(14)),
+                      )
+                    else
+                      Row(
+                        children: [
+                          Expanded(
+                            child: ElevatedButton.icon(
+                              onPressed: _isSavingRecipe
+                                  ? null
+                                  : _saveRecipeToSpecific,
+                              icon: _isSavingRecipe
+                                  ? const SizedBox(
+                                      height: 18,
+                                      width: 18,
+                                      child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          color: Colors.white))
+                                  : const Icon(Icons.save),
+                              label: const Text("Guardar receta"),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: primaryGreen,
+                                padding: const EdgeInsets.symmetric(
+                                    vertical: 12),
+                                shape: RoundedRectangleBorder(
+                                    borderRadius:
+                                        BorderRadius.circular(14)),
+                              ),
                             ),
                           ),
-                        ),
-                      ],
-                    ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: ElevatedButton.icon(
+                              onPressed: _isAddingMeal
+                                  ? null
+                                  : _addRecipeToTodayMeals,
+                              icon: _isAddingMeal
+                                  ? const SizedBox(
+                                      height: 18,
+                                      width: 18,
+                                      child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          color: Colors.white))
+                                  : const Icon(Icons.add_circle),
+                              label: const Text("Añadir a hoy"),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Color(0xFFFF8A00),
+                                padding: const EdgeInsets.symmetric(
+                                    vertical: 12),
+                                shape: RoundedRectangleBorder(
+                                    borderRadius:
+                                        BorderRadius.circular(14)),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                   ],
                 ],
               ),
@@ -880,7 +950,6 @@ class _SearchRecipeScreenState extends State<SearchRecipeScreen> {
     );
   }
 
-  // Helper: campo de búsqueda genérico
   Widget _buildSearchBar(TextEditingController controller, String hint) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14),
@@ -930,7 +999,6 @@ class _SearchRecipeScreenState extends State<SearchRecipeScreen> {
     );
   }
 
-  // Tarjeta de escaneo con IA
   Widget _scanAICard() {
     return Container(
       width: double.infinity,
@@ -1052,9 +1120,10 @@ class _SearchRecipeScreenState extends State<SearchRecipeScreen> {
           InkWell(
             onTap: () {
               Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const CreateRecipeScreen()),
-            );  
+                context,
+                MaterialPageRoute(
+                    builder: (_) => const CreateRecipeScreen()),
+              );
             },
             child: Container(
               width: 34,
@@ -1063,8 +1132,7 @@ class _SearchRecipeScreenState extends State<SearchRecipeScreen> {
                 color: Colors.white.withOpacity(0.18),
                 shape: BoxShape.circle,
               ),
-              child:
-                  const Icon(Icons.add, color: Colors.white),
+              child: const Icon(Icons.add, color: Colors.white),
             ),
           ),
         ],
@@ -1085,9 +1153,7 @@ class _SearchRecipeScreenState extends State<SearchRecipeScreen> {
         padding:
             const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: BoxDecoration(
-          color: selected
-              ? const Color(0xFFEAF3FF)
-              : Colors.white,
+          color: selected ? const Color(0xFFEAF3FF) : Colors.white,
           borderRadius: BorderRadius.circular(999),
           border: Border.all(
             color: selected
@@ -1099,13 +1165,10 @@ class _SearchRecipeScreenState extends State<SearchRecipeScreen> {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              icon,
-              size: 18,
-              color: selected
-                  ? const Color(0xFF2F73FF)
-                  : textGrey,
-            ),
+            Icon(icon, size: 18,
+                color: selected
+                    ? const Color(0xFF2F73FF)
+                    : textGrey),
             const SizedBox(width: 8),
             Text(
               text,
@@ -1243,7 +1306,6 @@ class _SearchRecipeScreenState extends State<SearchRecipeScreen> {
   }
 }
 
-// Modelo auxiliar para ingredientes específicos
 class _SpecificIngredient {
   final int? id;
   final String name;

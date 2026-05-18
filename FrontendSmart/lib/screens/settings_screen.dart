@@ -1,7 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 
 import '../app_theme.dart';
+import '../services/api_config.dart';
+import '../services/profile_settings_service.dart';
+import '../services/catalog_service.dart';
 
 const Color primaryGreen = Color.fromARGB(255, 11, 153, 101);
 const Color screenBg = Color(0xFFF6F9F8);
@@ -35,10 +40,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String _height = '';
   String _birthDateIso = '';
 
+  // Datos del backend (perfil)
+  String _dietName = '';
+  String _goalName = '';
+  int _allergyCount = 0;
+  int _blacklistCount = 0;
+  bool _loadingSettings = true;
+
+  final _settingsService = ProfileSettingsService();
+  final _catalogService = CatalogService();
+
   @override
   void initState() {
     super.initState();
     _loadPrefs();
+    _loadSettings();
   }
 
   Future<void> _loadPrefs() async {
@@ -50,11 +66,68 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _username = (prefs.getString('username') ?? '').trim();
       _email = (prefs.getString('email') ?? '').trim();
 
-      // Guardados por PersonalDataScreen (tu rama actualizada)
       _weight = (prefs.getString('weight') ?? '').trim();
       _height = (prefs.getString('height') ?? '').trim();
-      _birthDateIso = (prefs.getString('birthDate') ?? '').trim(); // YYYY-MM-DD
+      _birthDateIso = (prefs.getString('birthDate') ?? '').trim();
     });
+  }
+
+  Future<void> _loadSettings() async {
+    final prefs = await SharedPreferences.getInstance();
+    final accountId = prefs.getInt('accountId');
+    final profileId = prefs.getInt('profileId');
+    if (accountId == null || profileId == null) {
+      setState(() => _loadingSettings = false);
+      return;
+    }
+
+    try {
+      final settings = await _settingsService.getProfileSettings(
+          accountId: accountId, profileId: profileId);
+      if (settings.isNotEmpty) {
+        final dietId = settings['diet_type_id'] as int?;
+        final goalId = settings['goal_id'] as int?;
+
+        if (dietId != null) {
+          final diets = await _catalogService.getDietTypes();
+          _dietName = diets
+              .firstWhere((d) => d.id == dietId,
+                  orElse: () => CatalogItem(id: 0, name: 'Sin definir'))
+              .name;
+        }
+        if (goalId != null) {
+          final goals = await _catalogService.getGoals();
+          _goalName = goals
+              .firstWhere((g) => g.id == goalId,
+                  orElse: () => CatalogItem(id: 0, name: 'Sin definir'))
+              .name;
+        }
+      }
+
+      // Obtener conteo de alérgenos (illnesses)
+      final illnessesUri = Uri.parse(
+          ApiConfig.url("/account/$accountId/profile/$profileId/illnesses"));
+      final illnessesRes = await http.get(illnessesUri);
+      if (illnessesRes.statusCode == 200) {
+        final data = jsonDecode(illnessesRes.body);
+        _allergyCount = (data['illnesses'] as List?)?.length ?? 0;
+      }
+
+      // Obtener conteo de lista negra (bans)
+      final bansUri = Uri.parse(
+          ApiConfig.url("/account/$accountId/profile/$profileId/bans"));
+      final bansRes = await http.get(bansUri);
+      if (bansRes.statusCode == 200) {
+        final data = jsonDecode(bansRes.body);
+        final blacklist =
+            data['bannedGenericIngredients'] as List? ?? [];
+        _blacklistCount = blacklist.length;
+      }
+    } catch (e) {
+      debugPrint("Error cargando settings: $e");
+    } finally {
+      if (mounted) setState(() => _loadingSettings = false);
+    }
   }
 
   int? _ageFromBirthIso(String iso) {
@@ -78,7 +151,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
     themeModeNotifier.value = value ? ThemeMode.dark : ThemeMode.light;
   }
 
-  void _openPreferences() => Navigator.pushNamed(context, '/preferences');
+  Future<void> _openPreferences() async {
+    await Navigator.pushNamed(context, '/preferences');
+    _loadSettings(); // recargar al volver
+  }
 
   Future<void> _logout() async {
     final prefs = await SharedPreferences.getInstance();
@@ -161,219 +237,225 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
           // ================= Contenido scrolleable =================
           Expanded(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(18, 18, 18, 28),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // ---------------- PERFIL ----------------
-                  _sectionTitle("PERFIL"),
-                  _card(
-                    child: Column(
-                      children: [
-                        // ✅ NO editable: sin chevron, sin onTap
-                        ListTile(
-                          leading: const CircleAvatar(
-                            radius: 26,
-                            backgroundColor: softGreen,
-                            child: Icon(Icons.person, color: primaryGreen),
-                          ),
-                          title: Text(
-                            displayName,
-                            style: const TextStyle(fontWeight: FontWeight.w500),
-                          ),
-                          subtitle: Text(
-                            displayEmail,
-                            style: const TextStyle(fontSize: 13),
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceAround,
+            child: Stack(
+              children: [
+                SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(18, 18, 18, 28),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // ---------------- PERFIL ----------------
+                      _sectionTitle("PERFIL"),
+                      _card(
+                        child: Column(
                           children: [
-                            _MiniStat(
-                              title: weightText,
-                              subtitle: "Peso",
-                              icon: Icons.scale,
-                            ),
-                            _MiniStat(
-                              title: heightText,
-                              subtitle: "Altura",
-                              icon: Icons.height,
-                            ),
-                            _MiniStat(
-                              title: ageText,
-                              subtitle: "Edad",
-                              icon: Icons.cake,
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 16),
-
-                        // ✅ navega a tu placeholder
-                        ElevatedButton.icon(
-                          onPressed: () =>
-                              Navigator.pushNamed(context, '/saved_recipes'),
-                          icon: const Icon(Icons.bookmark_border),
-                          label: const Text("Ver mis recetas guardadas"),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: primaryGreen,
-                            minimumSize: const Size(double.infinity, 48),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(14),
-                            ),
-                            elevation: 0,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  const SizedBox(height: 26),
-
-                  // ---------------- PREFERENCIAS ----------------
-                  _sectionTitle("PREFERENCIAS"),
-                  _card(
-                    child: Column(
-                      children: [
-                        _PreferenceRow(
-                          icon: Icons.restaurant,
-                          title: "Tipo de dieta",
-                          value: "Editar",
-                          onTap: _openPreferences,
-                        ),
-                        _PreferenceRow(
-                          icon: Icons.warning_rounded,
-                          title: "Alérgenos",
-                          value: "Editar",
-                          iconColor: Colors.red,
-                          onTap: _openPreferences,
-                        ),
-                        _PreferenceRow(
-                          icon: Icons.block,
-                          title: "Lista negra",
-                          value: "Editar",
-                          iconColor: Colors.red,
-                          onTap: _openPreferences,
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  const SizedBox(height: 26),
-
-                  // ---------------- META FÍSICA ----------------
-                  _sectionTitle("META FÍSICA"),
-                  _card(
-                    child: InkWell(
-                      onTap: _openPreferences,
-                      borderRadius: BorderRadius.circular(14),
-                      child: Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: softBlue,
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                        child: const Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                "Editar meta y calorías recomendadas",
-                                style: TextStyle(
-                                  fontSize: 14.5,
-                                  fontWeight: FontWeight.w500,
-                                ),
+                            ListTile(
+                              leading: const CircleAvatar(
+                                radius: 26,
+                                backgroundColor: softGreen,
+                                child: Icon(Icons.person, color: primaryGreen),
+                              ),
+                              title: Text(
+                                displayName,
+                                style: const TextStyle(fontWeight: FontWeight.w500),
+                              ),
+                              subtitle: Text(
+                                displayEmail,
+                                style: const TextStyle(fontSize: 13),
                               ),
                             ),
-                            Icon(Icons.chevron_right),
+                            const SizedBox(height: 12),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceAround,
+                              children: [
+                                _MiniStat(
+                                  title: weightText,
+                                  subtitle: "Peso",
+                                  icon: Icons.scale,
+                                ),
+                                _MiniStat(
+                                  title: heightText,
+                                  subtitle: "Altura",
+                                  icon: Icons.height,
+                                ),
+                                _MiniStat(
+                                  title: ageText,
+                                  subtitle: "Edad",
+                                  icon: Icons.cake,
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 16),
+                            ElevatedButton.icon(
+                              onPressed: () =>
+                                  Navigator.pushNamed(context, '/saved_recipes'),
+                              icon: const Icon(Icons.bookmark_border),
+                              label: const Text("Ver mis recetas guardadas"),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: primaryGreen,
+                                minimumSize: const Size(double.infinity, 48),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(14),
+                                ),
+                                elevation: 0,
+                              ),
+                            ),
                           ],
                         ),
                       ),
-                    ),
-                  ),
 
-                  const SizedBox(height: 26),
+                      const SizedBox(height: 26),
 
-                  // ---------------- ELECTRODOMÉSTICOS ----------------
-                  _sectionTitle("ELECTRODOMÉSTICOS"),
-                  _card(
-                    child: Column(
-                      children: [
-                        _deviceTile("Horno", Icons.local_fire_department, horno,
-                            (v) => setState(() => horno = v)),
-                        _deviceTile("Microondas", Icons.microwave, microondas,
-                            (v) => setState(() => microondas = v)),
-                        _deviceTile("Batidora", Icons.blender, batidora,
-                            (v) => setState(() => batidora = v)),
-                        _deviceTile("Air Fryer", Icons.air, airFryer,
-                            (v) => setState(() => airFryer = v)),
-                        _deviceTile("Thermomix", Icons.precision_manufacturing,
-                            thermomix, (v) => setState(() => thermomix = v)),
-                        _deviceTile("Olla de cocción lenta", Icons.soup_kitchen,
-                            ollaLenta, (v) => setState(() => ollaLenta = v)),
-                        _deviceTile("Procesador de alimentos", Icons.settings,
-                            procesador, (v) => setState(() => procesador = v)),
-                        _deviceTile("Vaporera", Icons.cloud, vaporera,
-                            (v) => setState(() => vaporera = v)),
-                      ],
-                    ),
-                  ),
+                      // ---------------- PREFERENCIAS ----------------
+                      _sectionTitle("PREFERENCIAS"),
+                      _card(
+                        child: Column(
+                          children: [
+                            _PreferenceRow(
+                              icon: Icons.restaurant,
+                              title: "Tipo de dieta",
+                              value: _dietName.isNotEmpty ? _dietName : "Sin definir",
+                              onTap: _openPreferences,
+                            ),
+                            _PreferenceRow(
+                              icon: Icons.warning_rounded,
+                              title: "Alérgenos",
+                              value: _allergyCount > 0
+                                  ? "$_allergyCount seleccionados"
+                                  : "Ninguno",
+                              iconColor: Colors.red,
+                              onTap: _openPreferences,
+                            ),
+                            _PreferenceRow(
+                              icon: Icons.block,
+                              title: "Lista negra",
+                              value: _blacklistCount > 0
+                                  ? "$_blacklistCount ingredientes"
+                                  : "Vacía",
+                              iconColor: Colors.red,
+                              onTap: _openPreferences,
+                            ),
+                          ],
+                        ),
+                      ),
 
-                  const SizedBox(height: 14),
+                      const SizedBox(height: 26),
 
-                  // 💡 TIP
-                  AnimatedContainer(
-                    duration: const Duration(milliseconds: 250),
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: softBlue,
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: Colors.blue.shade200),
-                    ),
-                    child: Row(
-                      children: const [
-                        Icon(Icons.lightbulb, color: Colors.blue),
-                        SizedBox(width: 10),
-                        Expanded(
-                          child: Text(
-                            "Las recetas se adaptarán automáticamente según tus electrodomésticos disponibles",
-                            style: TextStyle(fontSize: 13),
+                      // ---------------- META FÍSICA ----------------
+                      _sectionTitle("META FÍSICA"),
+                      _card(
+                        child: InkWell(
+                          onTap: _openPreferences,
+                          borderRadius: BorderRadius.circular(14),
+                          child: Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: softBlue,
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    _goalName.isNotEmpty
+                                        ? "Meta: $_goalName"
+                                        : "Editar meta y calorías recomendadas",
+                                    style: const TextStyle(
+                                      fontSize: 14.5,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ),
+                                const Icon(Icons.chevron_right),
+                              ],
+                            ),
                           ),
                         ),
-                      ],
-                    ),
+                      ),
+
+                      const SizedBox(height: 26),
+
+                      // ---------------- ELECTRODOMÉSTICOS ----------------
+                      _sectionTitle("ELECTRODOMÉSTICOS"),
+                      _card(
+                        child: Column(
+                          children: [
+                            _deviceTile("Horno", Icons.local_fire_department, horno,
+                                (v) => setState(() => horno = v)),
+                            _deviceTile("Microondas", Icons.microwave, microondas,
+                                (v) => setState(() => microondas = v)),
+                            _deviceTile("Batidora", Icons.blender, batidora,
+                                (v) => setState(() => batidora = v)),
+                            _deviceTile("Air Fryer", Icons.air, airFryer,
+                                (v) => setState(() => airFryer = v)),
+                            _deviceTile("Thermomix", Icons.precision_manufacturing,
+                                thermomix, (v) => setState(() => thermomix = v)),
+                            _deviceTile("Olla de cocción lenta", Icons.soup_kitchen,
+                                ollaLenta, (v) => setState(() => ollaLenta = v)),
+                            _deviceTile("Procesador de alimentos", Icons.settings,
+                                procesador, (v) => setState(() => procesador = v)),
+                            _deviceTile("Vaporera", Icons.cloud, vaporera,
+                                (v) => setState(() => vaporera = v)),
+                          ],
+                        ),
+                      ),
+
+                      const SizedBox(height: 14),
+
+                      // 💡 TIP
+                      AnimatedContainer(
+                        duration: const Duration(milliseconds: 250),
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: softBlue,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: Colors.blue.shade200),
+                        ),
+                        child: Row(
+                          children: const [
+                            Icon(Icons.lightbulb, color: Colors.blue),
+                            SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                "Las recetas se adaptarán automáticamente según tus electrodomésticos disponibles",
+                                style: TextStyle(fontSize: 13),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+
+                      const SizedBox(height: 26),
+
+                      // ---------------- APARIENCIA ----------------
+                      _sectionTitle("APARIENCIA"),
+                      _card(
+                        child: SwitchListTile(
+                          value: darkMode,
+                          onChanged: _setDarkMode,
+                          title: const Text("Modo oscuro"),
+                          activeThumbColor: primaryGreen,
+                        ),
+                      ),
+
+                      const SizedBox(height: 26),
+
+                      // ---------------- CUENTA ----------------
+                      _sectionTitle("CUENTA"),
+                      _card(
+                        child: ListTile(
+                          leading: const Icon(Icons.logout, color: Colors.red),
+                          title: const Text("Cerrar sesión"),
+                          subtitle: const Text("Volver a la pantalla de bienvenida"),
+                          onTap: _logout,
+                        ),
+                      ),
+                    ],
                   ),
-
-                  const SizedBox(height: 26),
-
-                  // ---------------- FAMILIA ----------------
-                  // ✅ OCULTA por completo (no se renderiza)
-
-                  // ---------------- APARIENCIA ----------------
-                  _sectionTitle("APARIENCIA"),
-                  _card(
-                    child: SwitchListTile(
-                      value: darkMode,
-                      onChanged: _setDarkMode,
-                      title: const Text("Modo oscuro"),
-                      activeThumbColor: primaryGreen,
-                    ),
-                  ),
-
-                  const SizedBox(height: 26),
-
-                  // ---------------- CUENTA ----------------
-                  _sectionTitle("CUENTA"),
-                  _card(
-                    child: ListTile(
-                      leading: const Icon(Icons.logout, color: Colors.red),
-                      title: const Text("Cerrar sesión"),
-                      subtitle: const Text("Volver a la pantalla de bienvenida"),
-                      onTap: _logout,
-                    ),
-                  ),
-                ],
-              ),
+                ),
+                if (_loadingSettings)
+                  const Center(child: CircularProgressIndicator()),
+              ],
             ),
           ),
         ],

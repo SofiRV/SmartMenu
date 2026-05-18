@@ -1,7 +1,12 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:http/http.dart' as http;
+import 'package:image_picker/image_picker.dart';
+import 'package:http_parser/http_parser.dart';
+
 import '../home/models/meal_item.dart';
 import '../home/controllers/home_controller.dart';
 import '../home/header.dart';
@@ -19,6 +24,7 @@ import './models/mini_meal.dart';
 import '../../services/api_config.dart';
 import '../../services/profile_service.dart';
 import '../../navigation/route_observer.dart';
+import '../search_recipe_screen.dart'; // ← nueva importación
 
 class HomeTab extends StatefulWidget {
   final int accountId;
@@ -138,6 +144,66 @@ class _HomeTabState extends State<HomeTab>
     }
   }
 
+  // ==================== NUEVA FUNCIONALIDAD DE CÁMARA ====================
+  Future<void> _onInspirationCameraTap() async {
+    final ImagePicker picker = ImagePicker();
+    final XFile? photo = await picker.pickImage(
+      source: ImageSource.camera,
+      imageQuality: 85,
+    );
+    if (photo == null) return;
+
+    try {
+      final uri = Uri.parse(ApiConfig.url("/specific-ingredient/ai-detect"));
+      final request = http.MultipartRequest('POST', uri);
+      request.files.add(await http.MultipartFile.fromPath(
+        'file',
+        photo.path,
+        contentType: MediaType('image', 'jpeg'),
+      ));
+      final streamedResponse = await request.send();
+      final response = await http.Response.fromStream(streamedResponse);
+
+      if (response.statusCode == 200) {
+        final decoded = jsonDecode(response.body);
+        final List<dynamic> ingredients = decoded['ingredients'] ?? [];
+        final List<String> detectedNames = ingredients
+            .whereType<String>()
+            .map((s) => s.trim())
+            .where((s) => s.isNotEmpty)
+            .toList();
+
+        if (!mounted) return;
+
+        // Navegar a la pantalla de búsqueda con los ingredientes detectados
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => SearchRecipeScreen(
+              initialIngredients: detectedNames,
+            ),
+          ),
+        );
+      } else if (response.statusCode == 503) {
+        debugPrint('Servicio IA no disponible (503): ${response.body}');
+        _showError("El servicio de IA está saturado. Inténtalo de nuevo en unos momentos.");
+      } else {
+        debugPrint('Error ai-detect (${response.statusCode}): ${response.body}');
+        _showError("Error al detectar ingredientes (${response.statusCode})");
+      }
+    } catch (e) {
+      _showError("Error: $e");
+    }
+  }
+
+  void _showError(String msg) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(msg)),
+    );
+  }
+  // =======================================================================
+
   @override
   Widget build(BuildContext context) {
     return FutureBuilder<void>(
@@ -238,6 +304,7 @@ class _HomeTabState extends State<HomeTab>
                           time: nextMeal.time,
                           title: nextMeal.title,
                           kcal: nextMeal.kcal,
+                          foodId: nextMeal.foodId,
                         )
                       else
                         const Text(
@@ -283,7 +350,9 @@ class _HomeTabState extends State<HomeTab>
                         ),
                       ),
                       const SizedBox(height: 10),
-                      const InspirationCard(),
+                      InspirationCard(
+                        onCameraTap: _onInspirationCameraTap, // ← conectado
+                      ),
                       const SearchRecipesCard(),
                       const SizedBox(height: 18),
                       const Text(
